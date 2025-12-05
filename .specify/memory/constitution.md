@@ -1,50 +1,154 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!--
+SYNC IMPACT REPORT
+==================
 
-## Core Principles
+Version change: none → 1.0.0
+- MAJOR version bump: New constitution created for enterprise IDP platform
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+Added sections:
+- Purpose & Scope
+- Architecture & Stack
+- Domain & Product Principles (10 principles)
+- Quality & Testing Standards
+- Security & Access Control
+- UX Principles
+- Observability & Operations
+- Integration & Extensibility
+- Out of Scope for v1
+- Governance
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+Removed sections: none
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+Templates requiring updates: ✅ none - all templates reviewed and aligned
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+Follow-up TODOs: none - constitution is complete
+-->
+# Enterprise IDP Platform Constitution
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+## Purpose & Scope
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+The Enterprise IDP Platform is a modular document processing system that transforms complex, unstructured documents into structured business data through a six-stage pipeline: Capture, Classify, Extract, Validate, Review, and Integrate. Human-in-the-loop validation is a first-class requirement, ensuring enterprise-grade data integrity for mission-critical workflows.
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+## Architecture & Stack
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+### Technology Foundation
+- **Monorepo Management**: Nx workspace with strict TypeScript ("strict" mode enabled)
+- **Backend**: NestJS with Domain-Driven Design (DDD) folder structure
+- **Frontend**: React with Mantine UI components and TanStack Query for data management
+- **Database**: PostgreSQL for relational data persistence
+- **Queue System**: Redis + BullMQ for asynchronous OCR and processing workloads
+- **Storage**: S3-compatible interface (MinIO for development, AWS S3 for production)
+- **Infrastructure**: Docker containerization with Helm/Kubernetes deployment
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+### Integration Patterns
+Event-driven architecture is mandatory: webhooks and message queues are the default communication mechanism between components.
+
+## Domain & Product Principles
+
+### I. Modular Pipeline Architecture (NON-NEGOTIABLE)
+Every document must flow through the complete six-stage pipeline: Capture → Classify → Extract → Validate → Review → Integrate. Pipeline stages must be independently scalable and observable.
+
+### II. Human-in-the-Loop Validation
+Validation is not an afterthought—human review is embedded in the core workflow. The Review Station integrates Label Studio UI directly into the React application for seamless document correction.
+
+### III. Multi-Channel Ingestion
+Multi-channel document ingestion is core capability: S3 watchers, REST API uploads, and extensible to new channels. Minimum supported formats include PDFs (native and scanned) and common image formats (JPG/PNG/TIFF).
+
+### IV. Active Learning & Model Improvement
+Validated data must be versioned and fed back to continuously fine-tune ML models (OCR, LayoutLM, LLMs). This reduces repeated errors over time through supervised learning.
+
+### V. Schema Versioning & Rollbacks
+Every extraction template and rule set is versioned (e.g., Invoice_Schema_v1.2). Rollbacks must be supported to maintain data processing continuity.
+
+### VI. Configurable Pre-processing
+Document pre-processing (deskewing, noise reduction, binarization) is a configurable pipeline step using OpenCV and similar libraries.
+
+### VII. Flexible ML Stack
+- OCR: Open-source engines like PaddleOCR with handwriting support
+- Layout Analysis: LayoutLM or equivalent for high-volume structured forms
+- Classification: LLMs (Mistral/Llama via API or local quantized models) for zero-shot semantic classification
+- Model Flexibility: Models must be swappable without pipeline redesign
+
+### VIII. Dual Extraction Strategies
+Support both template-based (zonal) extraction and key-value extraction for semi-structured documents.
+
+### IX. Business Rule Validation
+Internal validation operates only on extracted data with configurable business rules. External validation supports third-party API/database calls with failure routing to dedicated review queues.
+
+### X. Data Enrichment
+Configurable data enrichment using external APIs or databases (e.g., postal_code → city/province lookup) is a first-class pipeline step.
+
+## Quality & Testing Standards
+
+### Test-Driven Development (NON-NEGOTIABLE)
+No work is complete until automated tests pass. Every functional requirement must have at least one automated test.
+
+### Backend Testing Requirements
+- **Integration Tests**: supertest + test containers for API validation (inputs, HTTP codes, database effects)
+- **Unit Tests**: Jest mandatory for validation rules and data transformations
+- **External Service Mocking**: S3, OCR engines, LLM APIs, and business systems must be mocked via dependency injection
+
+### Frontend Testing Requirements
+- **Component Tests**: React Testing Library for user interaction behavior (not implementation details)
+- **End-to-End Tests**: Playwright/Cypress for critical Review Station flows
+
+### Coverage Enforcement
+Minimum 80% test coverage required. Builds must fail if coverage drops below this threshold.
+
+## Security & Access Control
+
+### Role-Based Access Control (NON-NEGOTIABLE)
+RBAC is mandatory with minimum roles: Viewer, Validator, Admin. Validation, review, and administration capabilities must be clearly separated.
+
+### Concurrency Control
+Review Station requires document-level locking: one validator exclusively locks a document to prevent concurrent edits.
+
+## UX Principles
+
+### Review Station Optimization
+The Review Station is the primary user interface and must be optimized for enterprise throughput with keyboard-first navigation.
+
+### Keyboard-First Design
+All critical actions (accept, reject, field navigation, document navigation) must support hotkeys using react-hotkeys-hook or equivalent.
+
+### UI Consistency
+Mantine's native props and layout conventions must be used to maintain consistent, maintainable design system.
+
+## Observability & Operations
+
+### Pipeline Traceability
+OpenTelemetry instrumentation required across the entire pipeline. Every document journey from Ingestion → OCR → Validation → Export must be fully traceable.
+
+### Operational Readiness
+Logs, metrics, and traces must enable debugging of any pipeline stage failure without speculation.
+
+### Horizontal Scaling
+System design must support independent scaling of ingestion, OCR, and validation workloads.
+
+## Integration & Extensibility
+
+### Event-Driven Integration
+Webhooks must be emitted for important document state changes: DOCUMENT_RECEIVED, VALIDATION_REQUIRED, PROCESSING_COMPLETE.
+
+### API Design Standards
+Code-first APIs with explicit DTOs and validation decorators. DTOs must be centrally defined in shared Nx libraries and used by both backend and frontend to maintain contract synchronization.
+
+## Out of Scope for v1
+
+- Document redaction capabilities
+- Full BPM/workflow engine integration
+- End-user self-service schema design tools
+- Mobile application interfaces
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+This constitution supersedes all other development practices and architectural decisions. Amendments require:
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+1. **Documentation**: Clear rationale for changes with impact analysis
+2. **Approval**: Technical lead review and stakeholder alignment
+3. **Migration Plan**: Implementation timeline and backward compatibility strategy
+4. **Testing**: Constitution compliance must be verified in all PRs and code reviews
+
+Complexity must be justified against these principles. All specifications and implementations must demonstrate constitution compliance.
+
+**Version**: 1.0.0 | **Ratified**: 2025-12-05 | **Last Amended**: 2025-12-05
