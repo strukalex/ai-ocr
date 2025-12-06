@@ -150,7 +150,7 @@ Operators define document templates that specify where information appears on st
 - **FR-024**: Exclude out-of-scope items for v1 (redaction/masking, BPM/approval engines, end-user rule authoring, mobile apps, concurrent 
 editing by multiple people).
 - **FR-025**: Allow operators to define and manage layout-based templates for structured documents (invoices, forms, receipts), including coordinates for key-value fields, selection marks, signature boxes, and tables (with cross-page support), and map extracted output to those fields for direct export to downstream systems.
-- **FR-026**: Template workflows must validate input quality requirements (clear scans; PDF/JPG/PNG/BMP/TIFF/HEIF) and compile/deploy within minutes to support rapid iteration across document variations.
+- **FR-026**: Template workflows must validate input quality requirements (clear scans; PDF/JPG/PNG/TIFF) and compile/deploy within minutes to support rapid iteration across document variations.
 - **FR-027**: The system must allow extracted text values to be automatically categorized into business-relevant labels (e.g., "Medical Supplier" vs "Office Supplier" from vendor names) to support downstream routing and reporting.
 - **FR-028**: The system must integrate with the organization's existing identity system for single sign-on while supporting direct username/password login for users without SSO access.
 - **FR-029**: Before sending data to external systems, users must be able to review a combined view showing both extracted information and any supplemental data added during processing, with the ability to approve or reject the export.
@@ -199,6 +199,7 @@ Documents transition through the following states during processing:
 - State transitions are immutable events logged to audit trail with timestamp, actor (system/user), and reason
 - Documents in **Pending Review** can transition to **Enriched (Post-Validation)** (after correction) or **Exception** (if marked illegible/unprocessable)
 - **Enriched (Pre-Validation)** must occur before **Validated**; **Enriched (Post-Validation)** runs after validation/review to assemble export-ready data without bypassing validation requirements
+- Documents transition from **Enriched (Post-Validation)** to **Exported** when post-validation enrichment completes successfully AND (final integration review is approved if required for that document type OR no final review is configured and enrichment completed without errors)
 
 ### Security Requirements
 
