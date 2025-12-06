@@ -1,8 +1,8 @@
 # AI OCR IDP Platform Constitution
 <!--
 Sync Impact Report:
-- Version change: 1.1.0 → 1.2.0
-- Modified principles: Strict Type-Safe Modular Stack (adds shared DTO lib, TanStack Query, Mantine props, NestJS exceptions); Additional Constraints & Architecture (adds Prisma mention retained, OpenCV preprocessing, TanStack Query)
+- Version change: 1.2.0 → 1.3.0
+- Modified principles: AI/ML Tiering with Active Learning (adds MLflow experiment tracking + registry, Temporal retraining orchestration, rollback/fallback gating); Additional Constraints & Architecture (adds MLflow/Temporal/model registry enforcement)
 - Added sections: None
 - Removed sections: None
 - Templates requiring updates: ✅ .specify/templates/plan-template.md, ✅ .specify/templates/spec-template.md, ✅ .specify/templates/tasks-template.md
@@ -28,6 +28,12 @@ with runtime switchability. Apply tiered classification: traditional OCR for
 simple forms, LayoutLM for structured high-volume, LLMs (Llama 3 / GPT-4o mini)
 for unstructured. Every validated data point must enter an active learning loop
 that retrains and redeploys models; disablement requires documented approval.
+MLflow is the system of record for experiments: capture parameters, metrics, and
+artifacts for reproducibility. Temporal orchestrates the retraining workflow
+(data collection → training → evaluation → deployment) with idempotent steps and
+explicit failure handling. Model registry follows staged/live slots (v1, v2,
+v3...) with mandatory rollback/fallback paths and promotion gates tied to
+evaluation metrics.
 
 ### Quality Gates: Tests and Validation
 Maintain 80% minimum coverage; builds fail below threshold. Backend mandates
@@ -66,6 +72,11 @@ formal amendment.
   retriable. External calls must be typed, time-bounded, and logged.
 - Performance/reliability: Maintain rollout safety via feature flags and
   canaries when altering OCR/ML models or templates.
+- Active learning pipeline: MLflow manages experiment tracking and model
+  registry; metadata logging is required for reproducibility. Temporal
+  orchestrates retraining from data collection through deployment with auditable
+  tasks. Model slots must allow staged/live promotion, rollback, and fallback
+  when regressions are detected.
 
 ## Delivery Workflow & Quality Gates
 
@@ -89,4 +100,4 @@ formal amendment.
 - Ratification and amendment dates are recorded; version increments follow
   semantic versioning aligned to impact above.
 
-**Version**: 1.2.0 | **Ratified**: 2025-12-06 | **Last Amended**: 2025-12-06
+**Version**: 1.3.0 | **Ratified**: 2025-12-06 | **Last Amended**: 2025-12-06

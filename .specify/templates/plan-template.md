@@ -18,13 +18,13 @@
 -->
 
 **Language/Version**: TypeScript (strict) — NestJS backend, React 18 frontend  
-**Primary Dependencies**: Nx, NestJS (DDD modules, class-validator), Prisma, Mantine UI, @heartexlabs/label-studio, TanStack Query, BullMQ, OpenTelemetry, OpenCV  
+**Primary Dependencies**: Nx, NestJS (DDD modules, class-validator), Prisma, Mantine UI, @heartexlabs/label-studio, TanStack Query, BullMQ, OpenTelemetry, OpenCV, MLflow, Temporal  
 **Storage**: PostgreSQL (Prisma ORM), MinIO (S3-compatible), Redis for queues/cache  
 **Testing**: Jest + supertest + testcontainers (backend); React Testing Library + Playwright (frontend)  
 **Target Platform**: Docker + Kubernetes (Helm); Linux server runtime
 **Project Type**: Nx monorepo with backend and frontend workspaces  
 **Performance Goals**: Define per feature; preserve webhook and OCR throughput baselines  
-**Constraints**: 80% coverage gate (fail build below); DTO validation required; OTel tracing on new codepaths  
+**Constraints**: 80% coverage gate (fail build below); DTO validation required; OTel tracing on new codepaths; MLflow experiment tracking + model registry; Temporal-orchestrated retraining  
 **Scale/Scope**: Enterprise IDP/OCR with event-driven integrations; v1 excludes redaction, BPM engine, end-user schema designer, mobile apps
 
 ## Constitution Check
@@ -37,6 +37,7 @@
 - Frontend data: TanStack Query is the exclusive server data fetch/cache layer; no manual `fetch()`/alt state for server data.
 - Styling: Mantine native props drive styling; avoid ad-hoc CSS-in-JS outside Mantine conventions.
 - AI/ML: Plan must state OCR engine selection (PaddleOCR primary, Azure DI secondary) and runtime switch; tiering (OCR → LayoutLM → LLM) per document class; active learning loop for validated data.
+- Active learning pipeline: MLflow logs params/metrics/artifacts; Temporal orchestrates retraining (data collection → training → evaluation → deployment) with idempotent steps; model registry uses staged/live slots with rollback/fallback gates.
 - Quality gates: Coverage ≥80% enforced; backend integration tests (supertest + testcontainers) and unit tests; frontend RTL + Playwright for critical paths; third-party services mocked via DI.
 - Observability & events: OTel tracing across pipeline; structured logs and metrics; webhooks for all state changes with retry/alerts; contract tests for webhook schemas.
 - Data & schema: Extraction templates schema-versioned with rollback plan; DB migrations via Prisma with downgrade path.

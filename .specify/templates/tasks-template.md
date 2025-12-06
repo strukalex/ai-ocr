@@ -75,6 +75,9 @@ Examples of foundational tasks (adjust based on your project):
 - [ ] T091 Configure TanStack Query provider/cache for React apps; remove manual `fetch()` usages
 - [ ] T092 Add OpenCV-based preprocessing pipeline (deskew, noise reduction, binarization) with tests
 - [ ] T093 Enforce NestJS HTTP exception strategy; document any custom codes with OTel trace linkage
+- [ ] T094 Stand up MLflow tracking server and model registry with auth, storage, and artifact retention configured
+- [ ] T095 Implement Temporal retraining workflow (data collection → training → evaluation → deployment) with retries/idempotency
+- [ ] T096 Define model promotion/rollback path with staged/live slots (v1/v2/v3) and automated fallback triggers
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
