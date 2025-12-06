@@ -80,6 +80,21 @@
 <!--
   ACTION REQUIRED: The content in this section represents placeholders.
   Fill them out with the right functional requirements.
+
+  Constitution alignment (must be reflected in requirements):
+  - TypeScript strict + DTO validation (`class-validator`) for every API.
+  - AI/ML tiering: PaddleOCR primary, Azure DI secondary, LayoutLM for structured, LLM for unstructured; runtime switchable.
+  - Active learning loop for validated data with retrain trigger.
+  - OTel tracing/logging/metrics on new flows; webhooks for all state changes with contract tests.
+  - Schema versioning for extraction templates and DB migrations with rollback (Prisma migrations).
+  - Shared DTO library `@my-org/shared-types` used by backend and frontend.
+  - Frontend data via TanStack Query only; no manual `fetch()`/alt server state.
+  - Styling uses Mantine props system.
+  - Preprocessing uses OpenCV or compatible OSS; no proprietary SDKs.
+  - Backend errors use NestJS HTTP exceptions; custom codes must be OTel-traced and documented in contracts.
+  - Tests: backend integration (supertest + testcontainers) and unit tests; frontend RTL + Playwright; 80% coverage gate.
+  - Keyboard-first validation UX (react-hotkeys-hook).
+  - v1 exclusions stay out unless amended: redaction, BPM engine, end-user schema designer, mobile apps.
 -->
 
 ### Functional Requirements

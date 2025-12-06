@@ -8,7 +8,7 @@ description: "Task list template for feature implementation"
 **Input**: Design documents from `/specs/[###-feature-name]/`
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/
 
-**Tests**: The examples below include test tasks. Tests are OPTIONAL - only include them if explicitly requested in the feature specification.
+**Tests**: Tests are REQUIRED per constitution. Maintain ≥80% coverage; include backend integration (supertest + testcontainers), backend unit, frontend RTL + Playwright. Use DI to mock external services.
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 
@@ -48,9 +48,9 @@ description: "Task list template for feature implementation"
 
 **Purpose**: Project initialization and basic structure
 
-- [ ] T001 Create project structure per implementation plan
-- [ ] T002 Initialize [language] project with [framework] dependencies
-- [ ] T003 [P] Configure linting and formatting tools
+- [ ] T001 Create Nx workspace structure per implementation plan
+- [ ] T002 Initialize NestJS + React (Mantine) with required dependencies (BullMQ, OTel, Label Studio embed)
+- [ ] T003 [P] Configure linting/formatting and TypeScript strict mode
 
 ---
 
@@ -62,12 +62,19 @@ description: "Task list template for feature implementation"
 
 Examples of foundational tasks (adjust based on your project):
 
-- [ ] T004 Setup database schema and migrations framework
-- [ ] T005 [P] Implement authentication/authorization framework
-- [ ] T006 [P] Setup API routing and middleware structure
-- [ ] T007 Create base models/entities that all stories depend on
-- [ ] T008 Configure error handling and logging infrastructure
-- [ ] T009 Setup environment configuration management
+- [ ] T004 Setup Prisma schema and migrations framework with rollback scripts
+- [ ] T005 [P] Implement Keycloak-based authentication/authorization integration
+- [ ] T006 [P] Setup API routing and middleware structure with DTO validation
+- [ ] T007 Create base models/entities and schema versioning for extraction templates
+- [ ] T008 Configure error handling, structured logging, and OpenTelemetry tracing
+- [ ] T009 Setup environment configuration management and secrets handling
+- [ ] T010 Establish BullMQ queues and Redis connectivity with health checks
+- [ ] T011 Configure webhook publisher with retry/backoff and contract tests
+- [ ] T012 Wire MinIO (S3-compatible) storage clients via DI
+- [ ] T090 Create shared DTO library `@my-org/shared-types`; export code-first DTOs for BE/FE
+- [ ] T091 Configure TanStack Query provider/cache for React apps; remove manual `fetch()` usages
+- [ ] T092 Add OpenCV-based preprocessing pipeline (deskew, noise reduction, binarization) with tests
+- [ ] T093 Enforce NestJS HTTP exception strategy; document any custom codes with OTel trace linkage
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 

@@ -1,154 +1,92 @@
+# AI OCR IDP Platform Constitution
 <!--
-SYNC IMPACT REPORT
-==================
-
-Version change: none → 1.0.0
-- MAJOR version bump: New constitution created for enterprise IDP platform
-
-Added sections:
-- Purpose & Scope
-- Architecture & Stack
-- Domain & Product Principles (10 principles)
-- Quality & Testing Standards
-- Security & Access Control
-- UX Principles
-- Observability & Operations
-- Integration & Extensibility
-- Out of Scope for v1
-- Governance
-
-Removed sections: none
-
-Templates requiring updates: ✅ none - all templates reviewed and aligned
-
-Follow-up TODOs: none - constitution is complete
+Sync Impact Report:
+- Version change: 1.1.0 → 1.2.0
+- Modified principles: Strict Type-Safe Modular Stack (adds shared DTO lib, TanStack Query, Mantine props, NestJS exceptions); Additional Constraints & Architecture (adds Prisma mention retained, OpenCV preprocessing, TanStack Query)
+- Added sections: None
+- Removed sections: None
+- Templates requiring updates: ✅ .specify/templates/plan-template.md, ✅ .specify/templates/spec-template.md, ✅ .specify/templates/tasks-template.md
+- Follow-up TODOs: None
 -->
-# Enterprise IDP Platform Constitution
 
-## Purpose & Scope
+## Core Principles
 
-The Enterprise IDP Platform is a modular document processing system that transforms complex, unstructured documents into structured business data through a six-stage pipeline: Capture, Classify, Extract, Validate, Review, and Integrate. Human-in-the-loop validation is a first-class requirement, ensuring enterprise-grade data integrity for mission-critical workflows.
+### Strict Type-Safe Modular Stack
+Enforce Nx monorepo boundaries with NestJS modular DDD packages and React app
+composition. TypeScript strict mode stays on. All DTOs live in a shared library
+(`@my-org/shared-types`) imported by backend and frontend, code-first with
+`class-validator` decorators. PostgreSQL access uses Prisma as the sole ORM with
+migrations managed and reviewed. TanStack Query is the only frontend data
+fetching/caching layer—no manual `fetch()` or alternate state for server data.
+Styling uses Mantine native props, not ad-hoc styles. External systems
+(Keycloak, Redis/BullMQ, MinIO, PostgreSQL, Label Studio) integrate via DI and
+explicit contracts; no ad-hoc SDK sprawl.
 
-## Architecture & Stack
+### AI/ML Tiering with Active Learning
+Use dual OCR engines (PaddleOCR primary, Azure Document Intelligence secondary)
+with runtime switchability. Apply tiered classification: traditional OCR for
+simple forms, LayoutLM for structured high-volume, LLMs (Llama 3 / GPT-4o mini)
+for unstructured. Every validated data point must enter an active learning loop
+that retrains and redeploys models; disablement requires documented approval.
 
-### Technology Foundation
-- **Monorepo Management**: Nx workspace with strict TypeScript ("strict" mode enabled)
-- **Backend**: NestJS with Domain-Driven Design (DDD) folder structure
-- **Frontend**: React with Mantine UI components and TanStack Query for data management
-- **Database**: PostgreSQL for relational data persistence
-- **Queue System**: Redis + BullMQ for asynchronous OCR and processing workloads
-- **Storage**: S3-compatible interface (MinIO for development, AWS S3 for production)
-- **Infrastructure**: Docker containerization with Helm/Kubernetes deployment
+### Quality Gates: Tests and Validation
+Maintain 80% minimum coverage; builds fail below threshold. Backend mandates
+integration tests (supertest + testcontainers) for all endpoints and unit tests
+for business logic. Frontend covers critical paths with React Testing Library
+and Playwright. External services are mocked via dependency injection; DTO
+validation is non-negotiable.
 
-### Integration Patterns
-Event-driven architecture is mandatory: webhooks and message queues are the default communication mechanism between components.
+### Evented Observability & Auditability
+Emit webhooks on all state changes for event-driven integrations. OpenTelemetry
+tracing is required across the full pipeline (ingest → OCR/ML → validation →
+export). All extraction templates are schema-versioned with rollback paths.
+Every data integrity change writes an audit trail with actor, timestamp, and
+diff.
 
-## Domain & Product Principles
+### UX and Scope Discipline
+Validation interfaces are keyboard-first using `react-hotkeys-hook`; mouse-only
+flows are rejected. v1 explicitly excludes document redaction, full BPM engine,
+end-user schema design, and mobile apps—do not accept scope creep without
+formal amendment.
 
-### I. Modular Pipeline Architecture (NON-NEGOTIABLE)
-Every document must flow through the complete six-stage pipeline: Capture → Classify → Extract → Validate → Review → Integrate. Pipeline stages must be independently scalable and observable.
+## Additional Constraints & Architecture
 
-### II. Human-in-the-Loop Validation
-Validation is not an afterthought—human review is embedded in the core workflow. The Review Station integrates Label Studio UI directly into the React application for seamless document correction.
+- Stack: Nx monorepo; NestJS backend; React + Mantine UI frontend with embedded
+  Label Studio; PostgreSQL primary DB via Prisma ORM; Redis + BullMQ for queues;
+  MinIO S3-compatible storage; Keycloak for auth; Docker + Kubernetes with Helm
+  for deploys.
+- Contracts: All APIs are code-first; DTOs validated on input/output. Schema
+  changes require version bumps and backward-compatible migrations when
+  possible. Error handling uses standard NestJS HTTP exceptions; custom codes
+  require OTel trace linkage and contract documentation.
+- Frontend data: TanStack Query exclusively for server data fetching/caching.
+- Preprocessing: Document deskewing/noise reduction/binarization must use
+  OpenCV or compatible OSS libraries; proprietary SDKs are prohibited.
+- Integrations: Webhooks are first-class; failures must be observable and
+  retriable. External calls must be typed, time-bounded, and logged.
+- Performance/reliability: Maintain rollout safety via feature flags and
+  canaries when altering OCR/ML models or templates.
 
-### III. Multi-Channel Ingestion
-Multi-channel document ingestion is core capability: S3 watchers, REST API uploads, and extensible to new channels. Minimum supported formats include PDFs (native and scanned) and common image formats (JPG/PNG/TIFF).
+## Delivery Workflow & Quality Gates
 
-### IV. Active Learning & Model Improvement
-Validated data must be versioned and fed back to continuously fine-tune ML models (OCR, LayoutLM, LLMs). This reduces repeated errors over time through supervised learning.
-
-### V. Schema Versioning & Rollbacks
-Every extraction template and rule set is versioned (e.g., Invoice_Schema_v1.2). Rollbacks must be supported to maintain data processing continuity.
-
-### VI. Configurable Pre-processing
-Document pre-processing (deskewing, noise reduction, binarization) is a configurable pipeline step using OpenCV and similar libraries.
-
-### VII. Flexible ML Stack
-- OCR: Open-source engines like PaddleOCR with handwriting support
-- Layout Analysis: LayoutLM or equivalent for high-volume structured forms
-- Classification: LLMs (Mistral/Llama via API or local quantized models) for zero-shot semantic classification
-- Model Flexibility: Models must be swappable without pipeline redesign
-
-### VIII. Dual Extraction Strategies
-Support both template-based (zonal) extraction and key-value extraction for semi-structured documents.
-
-### IX. Business Rule Validation
-Internal validation operates only on extracted data with configurable business rules. External validation supports third-party API/database calls with failure routing to dedicated review queues.
-
-### X. Data Enrichment
-Configurable data enrichment using external APIs or databases (e.g., postal_code → city/province lookup) is a first-class pipeline step.
-
-## Quality & Testing Standards
-
-### Test-Driven Development (NON-NEGOTIABLE)
-No work is complete until automated tests pass. Every functional requirement must have at least one automated test.
-
-### Backend Testing Requirements
-- **Integration Tests**: supertest + test containers for API validation (inputs, HTTP codes, database effects)
-- **Unit Tests**: Jest mandatory for validation rules and data transformations
-- **External Service Mocking**: S3, OCR engines, LLM APIs, and business systems must be mocked via dependency injection
-
-### Frontend Testing Requirements
-- **Component Tests**: React Testing Library for user interaction behavior (not implementation details)
-- **End-to-End Tests**: Playwright/Cypress for critical Review Station flows
-
-### Coverage Enforcement
-Minimum 80% test coverage required. Builds must fail if coverage drops below this threshold.
-
-## Security & Access Control
-
-### Role-Based Access Control (NON-NEGOTIABLE)
-RBAC is mandatory with minimum roles: Viewer, Validator, Admin. Validation, review, and administration capabilities must be clearly separated.
-
-### Concurrency Control
-Review Station requires document-level locking: one validator exclusively locks a document to prevent concurrent edits.
-
-## UX Principles
-
-### Review Station Optimization
-The Review Station is the primary user interface and must be optimized for enterprise throughput with keyboard-first navigation.
-
-### Keyboard-First Design
-All critical actions (accept, reject, field navigation, document navigation) must support hotkeys using react-hotkeys-hook or equivalent.
-
-### UI Consistency
-Mantine's native props and layout conventions must be used to maintain consistent, maintainable design system.
-
-## Observability & Operations
-
-### Pipeline Traceability
-OpenTelemetry instrumentation required across the entire pipeline. Every document journey from Ingestion → OCR → Validation → Export must be fully traceable.
-
-### Operational Readiness
-Logs, metrics, and traces must enable debugging of any pipeline stage failure without speculation.
-
-### Horizontal Scaling
-System design must support independent scaling of ingestion, OCR, and validation workloads.
-
-## Integration & Extensibility
-
-### Event-Driven Integration
-Webhooks must be emitted for important document state changes: DOCUMENT_RECEIVED, VALIDATION_REQUIRED, PROCESSING_COMPLETE.
-
-### API Design Standards
-Code-first APIs with explicit DTOs and validation decorators. DTOs must be centrally defined in shared Nx libraries and used by both backend and frontend to maintain contract synchronization.
-
-## Out of Scope for v1
-
-- Document redaction capabilities
-- Full BPM/workflow engine integration
-- End-user self-service schema design tools
-- Mobile application interfaces
+- Plan and spec phases must prove constitution alignment before implementation.
+- Tests: Integration + unit tests on backend; RTL + Playwright on frontend; mock
+  all third-party services via DI. Coverage gate 80% enforced in CI.
+- Observability: OTel traces, structured logs, and metrics are mandatory per
+  feature. Webhook contracts require contract tests.
+- Data: Schema versioning for templates and DB migrations with rollback steps.
+- UX: Keyboard-first shortcuts defined per validation screen and tested; Mantine
+  props drive styling.
 
 ## Governance
 
-This constitution supersedes all other development practices and architectural decisions. Amendments require:
+- This constitution supersedes other practices for platform and feature work.
+- Amendments require documented proposal, rationale, migration/rollback plan,
+  and maintainer approval. MAJOR for principle changes/removals, MINOR for new
+  principles or material expansions, PATCH for clarifications.
+- Compliance review is required in every PR and in release checklists; blockers
+  may not be waived without recorded approval.
+- Ratification and amendment dates are recorded; version increments follow
+  semantic versioning aligned to impact above.
 
-1. **Documentation**: Clear rationale for changes with impact analysis
-2. **Approval**: Technical lead review and stakeholder alignment
-3. **Migration Plan**: Implementation timeline and backward compatibility strategy
-4. **Testing**: Constitution compliance must be verified in all PRs and code reviews
-
-Complexity must be justified against these principles. All specifications and implementations must demonstrate constitution compliance.
-
-**Version**: 1.0.0 | **Ratified**: 2025-12-05 | **Last Amended**: 2025-12-05
+**Version**: 1.2.0 | **Ratified**: 2025-12-06 | **Last Amended**: 2025-12-06

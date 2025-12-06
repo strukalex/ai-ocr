@@ -17,21 +17,33 @@
   the iteration process.
 -->
 
-**Language/Version**: [e.g., Python 3.11, Swift 5.9, Rust 1.75 or NEEDS CLARIFICATION]  
-**Primary Dependencies**: [e.g., FastAPI, UIKit, LLVM or NEEDS CLARIFICATION]  
-**Storage**: [if applicable, e.g., PostgreSQL, CoreData, files or N/A]  
-**Testing**: [e.g., pytest, XCTest, cargo test or NEEDS CLARIFICATION]  
-**Target Platform**: [e.g., Linux server, iOS 15+, WASM or NEEDS CLARIFICATION]
-**Project Type**: [single/web/mobile - determines source structure]  
-**Performance Goals**: [domain-specific, e.g., 1000 req/s, 10k lines/sec, 60 fps or NEEDS CLARIFICATION]  
-**Constraints**: [domain-specific, e.g., <200ms p95, <100MB memory, offline-capable or NEEDS CLARIFICATION]  
-**Scale/Scope**: [domain-specific, e.g., 10k users, 1M LOC, 50 screens or NEEDS CLARIFICATION]
+**Language/Version**: TypeScript (strict) — NestJS backend, React 18 frontend  
+**Primary Dependencies**: Nx, NestJS (DDD modules, class-validator), Prisma, Mantine UI, @heartexlabs/label-studio, TanStack Query, BullMQ, OpenTelemetry, OpenCV  
+**Storage**: PostgreSQL (Prisma ORM), MinIO (S3-compatible), Redis for queues/cache  
+**Testing**: Jest + supertest + testcontainers (backend); React Testing Library + Playwright (frontend)  
+**Target Platform**: Docker + Kubernetes (Helm); Linux server runtime
+**Project Type**: Nx monorepo with backend and frontend workspaces  
+**Performance Goals**: Define per feature; preserve webhook and OCR throughput baselines  
+**Constraints**: 80% coverage gate (fail build below); DTO validation required; OTel tracing on new codepaths  
+**Scale/Scope**: Enterprise IDP/OCR with event-driven integrations; v1 excludes redaction, BPM engine, end-user schema designer, mobile apps
 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+- Stack fit: Nx monorepo boundaries respected; NestJS modules + React/Mantine + Label Studio only. External systems (Keycloak, Redis/BullMQ, MinIO, PostgreSQL) wired via DI with typed contracts.
+- Type safety: TypeScript strict on; DTOs code-first with `class-validator`. No untyped SDK shortcuts.
+- Shared DTOs: DTOs reside in `@my-org/shared-types`, consumed by backend and frontend.
+- Frontend data: TanStack Query is the exclusive server data fetch/cache layer; no manual `fetch()`/alt state for server data.
+- Styling: Mantine native props drive styling; avoid ad-hoc CSS-in-JS outside Mantine conventions.
+- AI/ML: Plan must state OCR engine selection (PaddleOCR primary, Azure DI secondary) and runtime switch; tiering (OCR → LayoutLM → LLM) per document class; active learning loop for validated data.
+- Quality gates: Coverage ≥80% enforced; backend integration tests (supertest + testcontainers) and unit tests; frontend RTL + Playwright for critical paths; third-party services mocked via DI.
+- Observability & events: OTel tracing across pipeline; structured logs and metrics; webhooks for all state changes with retry/alerts; contract tests for webhook schemas.
+- Data & schema: Extraction templates schema-versioned with rollback plan; DB migrations via Prisma with downgrade path.
+- Error handling: Backend uses NestJS HTTP exceptions; custom codes require OTel trace linkage and contract documentation.
+- Preprocessing: Document deskew/noise reduction/binarization uses OpenCV or compatible OSS, no proprietary SDKs.
+- UX: Keyboard-first flows using `react-hotkeys-hook`; outline shortcuts for validation UI changes.
+- Scope discipline: v1 exclusions honored (no redaction, BPM engine, end-user schema designer, mobile apps) unless an amendment is approved.
 
 ## Project Structure
 
