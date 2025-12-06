@@ -78,6 +78,7 @@ Examples of foundational tasks (adjust based on your project):
 - [ ] T094 Stand up MLflow tracking server and model registry with auth, storage, and artifact retention configured
 - [ ] T095 Implement Temporal retraining workflow (data collection → training → evaluation → deployment) with retries/idempotency
 - [ ] T096 Define model promotion/rollback path with staged/live slots (v1/v2/v3) and automated fallback triggers
+- [ ] T097 Align enrichment lifecycle to allow pre- and post-validation runs; ensure partial-document enrichment executes and state machine reflects ordering
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 

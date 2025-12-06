@@ -86,6 +86,7 @@
   - AI/ML tiering: PaddleOCR primary, Azure DI secondary, LayoutLM for structured, LLM for unstructured; runtime switchable.
   - Active learning loop for validated data with retrain trigger.
   - Active learning pipeline: MLflow for experiment tracking/metadata + model registry; Temporal orchestrates retraining (data collection → training → evaluation → deployment) with rollback/fallback gates for staged/live versions.
+  - Enrichment lifecycle: Supplemental enrichment may run pre- and post-validation; initial enrichment must execute even on partial documents, and lifecycle/state diagrams must align with that ordering.
   - OTel tracing/logging/metrics on new flows; webhooks for all state changes with contract tests.
   - Schema versioning for extraction templates and DB migrations with rollback (Prisma migrations).
   - Shared DTO library `@my-org/shared-types` used by backend and frontend.

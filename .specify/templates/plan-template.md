@@ -24,7 +24,7 @@
 **Target Platform**: Docker + Kubernetes (Helm); Linux server runtime
 **Project Type**: Nx monorepo with backend and frontend workspaces  
 **Performance Goals**: Define per feature; preserve webhook and OCR throughput baselines  
-**Constraints**: 80% coverage gate (fail build below); DTO validation required; OTel tracing on new codepaths; MLflow experiment tracking + model registry; Temporal-orchestrated retraining  
+**Constraints**: 80% coverage gate (fail build below); DTO validation required; OTel tracing on new codepaths; MLflow experiment tracking + model registry; Temporal-orchestrated retraining; enrichment allowed pre/post validation with lifecycle consistency  
 **Scale/Scope**: Enterprise IDP/OCR with event-driven integrations; v1 excludes redaction, BPM engine, end-user schema designer, mobile apps
 
 ## Constitution Check
@@ -38,6 +38,7 @@
 - Styling: Mantine native props drive styling; avoid ad-hoc CSS-in-JS outside Mantine conventions.
 - AI/ML: Plan must state OCR engine selection (PaddleOCR primary, Azure DI secondary) and runtime switch; tiering (OCR → LayoutLM → LLM) per document class; active learning loop for validated data.
 - Active learning pipeline: MLflow logs params/metrics/artifacts; Temporal orchestrates retraining (data collection → training → evaluation → deployment) with idempotent steps; model registry uses staged/live slots with rollback/fallback gates.
+- Enrichment lifecycle: Supplemental enrichment may run before and after validation; initial enrichment must execute even on partial documents, and lifecycle/state diagrams must not contradict this ordering.
 - Quality gates: Coverage ≥80% enforced; backend integration tests (supertest + testcontainers) and unit tests; frontend RTL + Playwright for critical paths; third-party services mocked via DI.
 - Observability & events: OTel tracing across pipeline; structured logs and metrics; webhooks for all state changes with retry/alerts; contract tests for webhook schemas.
 - Data & schema: Extraction templates schema-versioned with rollback plan; DB migrations via Prisma with downgrade path.

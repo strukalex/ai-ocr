@@ -1,8 +1,8 @@
 # AI OCR IDP Platform Constitution
 <!--
 Sync Impact Report:
-- Version change: 1.2.0 → 1.3.0
-- Modified principles: AI/ML Tiering with Active Learning (adds MLflow experiment tracking + registry, Temporal retraining orchestration, rollback/fallback gating); Additional Constraints & Architecture (adds MLflow/Temporal/model registry enforcement)
+- Version change: 1.3.0 → 1.4.0
+- Modified principles: Additional Constraints & Architecture (enrichment may occur pre/post validation; initial enrichment allowed on partial documents with lifecycle consistency)
 - Added sections: None
 - Removed sections: None
 - Templates requiring updates: ✅ .specify/templates/plan-template.md, ✅ .specify/templates/spec-template.md, ✅ .specify/templates/tasks-template.md
@@ -77,6 +77,10 @@ formal amendment.
   orchestrates retraining from data collection through deployment with auditable
   tasks. Model slots must allow staged/live promotion, rollback, and fallback
   when regressions are detected.
+- Enrichment lifecycle: Supplemental enrichment may occur before and after
+  validation. Initial enrichment must run even on partial documents to capture
+  available signals; the lifecycle and state machine must permit enrichment
+  before validation without contradiction.
 
 ## Delivery Workflow & Quality Gates
 
@@ -100,4 +104,4 @@ formal amendment.
 - Ratification and amendment dates are recorded; version increments follow
   semantic versioning aligned to impact above.
 
-**Version**: 1.3.0 | **Ratified**: 2025-12-06 | **Last Amended**: 2025-12-06
+**Version**: 1.4.0 | **Ratified**: 2025-12-06 | **Last Amended**: 2025-12-06
