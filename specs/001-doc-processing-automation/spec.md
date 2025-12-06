@@ -141,7 +141,7 @@ Operators define document templates that specify where information appears on st
 - **FR-015**: Notify submitters automatically when intervention is required (unprocessable, missing pages, ambiguous type) with reasons and resubmission guidance.
 - **FR-016**: Send real-time status change notifications/webhooks to external systems and allow routing based on extracted content values, not only confidence.
 - **FR-017**: Maintain immutable audit records for every data change (who, when, what) that are tamper-resistant and searchable.
-- **FR-018**: Enforce role-based access (viewer, validator, administrator at minimum) with enterprise identity integration and a username/password alternative.
+- **FR-018**: Enforce role-based access (viewer, validator, administrator and operator at minimum) with enterprise identity integration and a username/password alternative.
 - **FR-019**: Enable search across processed documents by content and metadata, including rule version, status, submitter, and key extracted fields.
 - **FR-020**: Persist human corrections in structured form and use them to reduce recurrence of similar errors; operators can monitor and trigger improvement runs.
 - **FR-021**: Ensure observability on processing flows (tracing, logging, metrics) and emit state-change webhooks for critical paths.
@@ -197,7 +197,7 @@ Documents transition through the following states during processing:
 - Documents may skip **Pending Review** if confidence thresholds are met and no high-risk flags triggered
 - **Failed** and **Exception** are terminal states requiring operator action to restart or abandon processing
 - State transitions are immutable events logged to audit trail with timestamp, actor (system/user), and reason
-- Documents in **Pending Review** can transition to **Validated** (after correction) or **Exception** (if marked illegible/unprocessable)
+- Documents in **Pending Review** can transition to **Enriched (Post-Validation)** (after correction) or **Exception** (if marked illegible/unprocessable)
 - **Enriched (Pre-Validation)** must occur before **Validated**; **Enriched (Post-Validation)** runs after validation/review to assemble export-ready data without bypassing validation requirements
 
 ### Security Requirements
