@@ -14,13 +14,13 @@
 - Q: What security and data protection requirements apply to this system? → A: Standard enterprise: encryption at rest and in transit, role-based access, audit logging, SSO integration
 - Q: What architectural style should the document processing pipeline follow? → A: Event-driven/async with queues: uploads enqueue jobs, background workers process stages, users notified on completion (scalable, fault-tolerant)
 - Q: What level of observability (logging, metrics, tracing) is required for production operations? → A: Standard: structured logging with log aggregation, metrics for all pipeline stages, basic distributed tracing for request flows
-- Q: How should document lifecycle states be defined as documents move through the processing pipeline? → A: Multi-stage lifecycle: Uploaded → Classified → Extracted → Validated → [Review if needed] → Enriched → Exported with Failed/Exception states
+- Q: How should document lifecycle states be defined as documents move through the processing pipeline? → A: Multi-stage lifecycle: Uploaded → Classified → Extracted → Enriched (pre-validation lookups) → Validated → [Review if needed] → Enriched (post-validation completion) → Exported with Failed/Exception states; pre-validation enrichment is mandatory to satisfy business rule checks, with optional post-validation enrichment to finalize export payloads
 
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - End-to-end intake to export (Priority: P1)
 
-Document submitters send files through monitored storage locations or direct upload; the system auto-classifies, improves quality, extracts data, validates, enriches/verifies externally, and delivers structured outputs or actionable exceptions with clear submitter notifications.
+Document submitters send files through monitored storage locations or direct upload; the system auto-classifies, improves quality, extracts data, enriches/verifies externally, validates with enriched data, and delivers structured outputs or actionable exceptions with clear submitter notifications.
 
 **Why this priority**: Core value of the platform is converting incoming documents into reliable business data without changing submitter workflows.
 
@@ -28,7 +28,7 @@ Document submitters send files through monitored storage locations or direct upl
 
 **Acceptance Scenarios**:
 
-1. **Given** documents arrive via different channels (upload, watched storage), **When** processing runs, **Then** documents are auto-classified, cleaned, extracted, validated, enriched/verified, and exported when confidence thresholds are met.
+1. **Given** documents arrive via different channels (upload, watched storage), **When** processing runs, **Then** documents are auto-classified, cleaned, extracted, enriched/verified, validated with enriched data, and exported when confidence thresholds are met.
 2. **Given** a document cannot be processed (unsupported format, unreadable scan, missing pages), **When** processing fails, **Then** the submitter is notified with the reason and steps to resubmit without blocking other documents.
 
 ---
@@ -154,13 +154,13 @@ editing by multiple people).
 - **FR-027**: The system must allow extracted text values to be automatically categorized into business-relevant labels (e.g., "Medical Supplier" vs "Office Supplier" from vendor names) to support downstream routing and reporting.
 - **FR-028**: The system must integrate with the organization's existing identity system for single sign-on while supporting direct username/password login for users without SSO access.
 - **FR-029**: Before sending data to external systems, users must be able to review a combined view showing both extracted information and any supplemental data added during processing, with the ability to approve or reject the export.
-- **FR-030**: Supplemental information lookups must complete before validation runs so that business rules can verify relationships between extracted and supplemented data.
+- **FR-030**: Supplemental information lookups must complete before validation runs so that business rules can verify relationships between extracted and supplemented data; additional enrichment may occur after validation to assemble the full export-ready object.
 - **FR-031**: When template matching is partial or below confidence thresholds, the system must fall back to flexible extraction; if confidence remains low, route to exception/human review to avoid silent mis-mapping.
 
 ### Architecture & Infrastructure Requirements
 
 - **ARCH-001**: Implement event-driven asynchronous processing pipeline where document uploads enqueue jobs rather than blocking for completion.
-- **ARCH-002**: Use message queues or task queues to decouple processing stages (intake → classification → OCR → extraction → validation → enrichment → export).
+- **ARCH-002**: Use message queues or task queues to decouple processing stages (intake → classification → OCR → extraction → enrichment for pre-validation lookups → validation/review → enrichment for export completion → export) while ensuring pre-validation enrichment runs before validation per FR-030.
 - **ARCH-003**: Deploy background workers that process queued jobs and can scale independently based on queue depth and processing latency.
 - **ARCH-004**: Emit state-change events at each pipeline stage to enable real-time status tracking and webhook notifications.
 - **ARCH-005**: Ensure pipeline stages are idempotent and support retry with exponential backoff for transient failures.
@@ -184,12 +184,13 @@ Documents transition through the following states during processing:
 1. **Uploaded**: Document received via intake channel, stored, initial metadata captured
 2. **Classified**: Document type identified (or marked as ambiguous if confidence too low)
 3. **Extracted**: OCR/text extraction completed, raw field data captured
-4. **Validated**: Business rule validation completed, confidence scores assigned
-5. **Pending Review**: Routed to human validator queue due to low confidence, ambiguity, or high-risk criteria
-6. **Enriched**: External lookups and verification completed (may occur in parallel with validation)
-7. **Exported**: Data successfully delivered to downstream systems or export targets
-8. **Failed**: Unrecoverable error occurred (corrupted file, unsupported format, missing pages)
-9. **Exception**: Requires manual intervention but is not permanently failed (external system timeout, partial template match, illegible fields)
+4. **Enriched (Pre-Validation)**: Mandatory supplemental lookups/verification needed for business rules; must complete before validation per FR-030
+5. **Validated**: Business rule validation completed using enriched data; confidence scores assigned
+6. **Pending Review**: Routed to human validator queue due to low confidence, ambiguity, or high-risk criteria
+7. **Enriched (Post-Validation)**: Optional enrichment/assembly to build full export-ready payload after validation/review
+8. **Exported**: Data successfully delivered to downstream systems or export targets
+9. **Failed**: Unrecoverable error occurred (corrupted file, unsupported format, missing pages)
+10. **Exception**: Requires manual intervention but is not permanently failed (external system timeout, partial template match, illegible fields)
 
 **State Transition Rules:**
 
@@ -197,6 +198,7 @@ Documents transition through the following states during processing:
 - **Failed** and **Exception** are terminal states requiring operator action to restart or abandon processing
 - State transitions are immutable events logged to audit trail with timestamp, actor (system/user), and reason
 - Documents in **Pending Review** can transition to **Validated** (after correction) or **Exception** (if marked illegible/unprocessable)
+- **Enriched (Pre-Validation)** must occur before **Validated**; **Enriched (Post-Validation)** runs after validation/review to assemble export-ready data without bypassing validation requirements
 
 ### Security Requirements
 
