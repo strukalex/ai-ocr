@@ -15,6 +15,9 @@
 - Q: What architectural style should the document processing pipeline follow? → A: Event-driven/async with queues: uploads enqueue jobs, background workers process stages, users notified on completion (scalable, fault-tolerant)
 - Q: What level of observability (logging, metrics, tracing) is required for production operations? → A: Standard: structured logging with log aggregation, metrics for all pipeline stages, basic distributed tracing for request flows
 - Q: How should document lifecycle states be defined as documents move through the processing pipeline? → A: Multi-stage lifecycle: Uploaded → Classified → Extracted → Enriched (pre-validation lookups) → Validated → [Review if needed] → Enriched (post-validation completion) → Exported with Failed/Exception states; pre-validation enrichment is mandatory to satisfy business rule checks, with optional post-validation enrichment to finalize export payloads
+- Q: How should recoverable business validation failures be handled? → A: Route recoverable failures to Pending Review with targeted correction guidance, then re-validate before proceeding.
+- Q: How should different input formats be handled internally? → A: Preserve originals immutably; normalize all pages to an image-backed PDF/A-2b (lossless where possible) for consistent OCR, enrichment, and review pipelines.
+- Q: What export payload format and delivery mechanism should be used for downstream systems? → A: Export structured data as versioned JSON over REST with webhooks, including schema id/version and document lifecycle status; support retries.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -156,6 +159,8 @@ editing by multiple people).
 - **FR-029**: Before sending data to external systems, users must be able to review a combined view showing both extracted information and any supplemental data added during processing, with the ability to approve or reject the export.
 - **FR-030**: Supplemental information lookups must complete before validation runs so that business rules can verify relationships between extracted and supplemented data; additional enrichment may occur after validation to assemble the full export-ready object.
 - **FR-031**: When template matching is partial or below confidence thresholds, the system must fall back to flexible extraction; if confidence remains low, route to exception/human review to avoid silent mis-mapping.
+- **FR-032**: Preserve each source file in its original format with checksum and immutable audit linkage; normalize all ingested documents to a single canonical processing format (image-backed PDF/A-2b, lossless when possible) so all OCR/enrichment/review/export steps operate on consistent artifacts.
+- **FR-033**: Export structured outputs as versioned JSON via REST endpoints with webhooks; include schema id/version and document lifecycle status, and support retryable delivery.
 
 ### Architecture & Infrastructure Requirements
 
@@ -186,7 +191,7 @@ Documents transition through the following states during processing:
 3. **Extracted**: OCR/text extraction completed, raw field data captured
 4. **Enriched (Pre-Validation)**: Mandatory supplemental lookups/verification needed for business rules; must complete before validation per FR-030
 5. **Validated**: Business rule validation completed using enriched data; confidence scores assigned
-6. **Pending Review**: Routed to human validator queue due to low confidence, ambiguity, or high-risk criteria
+6. **Pending Review**: Routed to human validator queue due to low confidence, ambiguity, high-risk criteria, business validation failures, or issues with external system data
 7. **Enriched (Post-Validation)**: Optional enrichment/assembly to build full export-ready payload after validation/review
 8. **Exported**: Data successfully delivered to downstream systems or export targets
 9. **Failed**: Unrecoverable error occurred (corrupted file, unsupported format, missing pages)
@@ -195,9 +200,11 @@ Documents transition through the following states during processing:
 **State Transition Rules:**
 
 - Documents may skip **Pending Review** if confidence thresholds are met and no high-risk flags triggered
+- Recoverable business validation failures (e.g., fixable field issues, missing but user-suppliable data) route from **Validated** to **Pending Review** with targeted guidance and must re-validate before proceeding
+- Documents transition to **Exception** from **Validated** if business rule validation fails due to uncorrectable issues (invalid external data, missing required fields that cannot be obtained, or system configuration errors)
 - **Failed** and **Exception** are terminal states requiring operator action to restart or abandon processing
 - State transitions are immutable events logged to audit trail with timestamp, actor (system/user), and reason
-- Documents in **Pending Review** can transition to **Enriched (Post-Validation)** (after correction) or **Exception** (if marked illegible/unprocessable)
+- Documents in **Pending Review** transition to **Validated** after human correction (which implies re-validation) before proceeding to **Enriched (Post-Validation)**, or to **Exception** if marked illegible/unprocessable
 - **Enriched (Pre-Validation)** must occur before **Validated**; **Enriched (Post-Validation)** runs after validation/review to assemble export-ready data without bypassing validation requirements
 - Documents transition from **Enriched (Post-Validation)** to **Exported** when post-validation enrichment completes successfully AND (final integration review is approved if required for that document type OR no final review is configured and enrichment completed without errors)
 

@@ -1,0 +1,29 @@
+# ai-ocr Development Guidelines
+
+Auto-generated from all feature plans. Last updated: 2025-12-06
+
+## Active Technologies
+
+- TypeScript (strict) — Nx monorepo with NestJS backend, React 18 frontend + Nx, NestJS (DDD modules, class-validator), Prisma, Mantine UI, @heartexlabs/label-studio, TanStack Query, BullMQ, Redis, OpenTelemetry, OpenCV, MLflow, Temporal, MinIO SDK, Keycloak adapters (001-doc-processing-automation)
+
+## Project Structure
+
+```text
+src/
+tests/
+```
+
+## Commands
+
+npm test && npm run lint
+
+## Code Style
+
+TypeScript (strict) — Nx monorepo with NestJS backend, React 18 frontend: Follow standard conventions
+
+## Recent Changes
+
+- 001-doc-processing-automation: Added TypeScript (strict) — Nx monorepo with NestJS backend, React 18 frontend + Nx, NestJS (DDD modules, class-validator), Prisma, Mantine UI, @heartexlabs/label-studio, TanStack Query, BullMQ, Redis, OpenTelemetry, OpenCV, MLflow, Temporal, MinIO SDK, Keycloak adapters
+
+<!-- MANUAL ADDITIONS START -->
+<!-- MANUAL ADDITIONS END -->

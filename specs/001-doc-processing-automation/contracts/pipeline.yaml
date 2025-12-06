@@ -1,0 +1,453 @@
+openapi: 3.0.3
+info:
+  title: Document Processing Pipeline
+  version: 0.1.0
+servers:
+  - url: https://api.example.com
+paths:
+  /documents:
+    post:
+      summary: Ingest a document (upload metadata and enqueue intake)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentIngestRequest'
+      responses:
+        '202':
+          description: Accepted and enqueued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentIngestResponse'
+  /documents/{documentId}:
+    get:
+      summary: Get document status and lifecycle data
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: Document status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentStatus'
+  /documents/{documentId}/classification/confirm:
+    post:
+      summary: Confirm or override an ambiguous classification
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClassificationDecision'
+      responses:
+        '200':
+          description: Classification updated and queued for extraction
+  /templates:
+    post:
+      summary: Create a template definition
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemplateCreateRequest'
+      responses:
+        '201':
+          description: Template created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Template'
+  /templates/{templateId}/versions:
+    post:
+      summary: Create a versioned template with coordinates and mappings
+      parameters:
+        - $ref: '#/components/parameters/TemplateId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemplateVersionCreateRequest'
+      responses:
+        '201':
+          description: Version created (draft)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateVersion'
+  /templates/{templateId}/versions/{versionId}/deploy:
+    post:
+      summary: Deploy or rollback a template version
+      parameters:
+        - $ref: '#/components/parameters/TemplateId'
+        - $ref: '#/components/parameters/VersionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action:
+                  type: string
+                  enum: [promote, rollback]
+                targetSlot:
+                  type: string
+                  enum: [live, canary]
+      responses:
+        '200':
+          description: Deployment updated
+  /validation/{documentId}/lock:
+    post:
+      summary: Acquire a validation lock for keyboard-first review
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ttlSeconds:
+                  type: integer
+                  minimum: 30
+              required: [ttlSeconds]
+      responses:
+        '200':
+          description: Lock granted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lock'
+        '409':
+          description: Lock held by another validator
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lock'
+    delete:
+      summary: Release a validation lock
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '204':
+          description: Released
+  /validation/{documentId}/submit:
+    post:
+      summary: Submit validation results and corrections
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidationSubmission'
+      responses:
+        '200':
+          description: Submitted, triggers re-validation/post-enrichment
+  /queues/status:
+    get:
+      summary: Inspect pipeline queue health (for ops/alerting)
+      responses:
+        '200':
+          description: Queue metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueueStatus'
+  /webhooks/test:
+    post:
+      summary: Send a test webhook for a subscription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                subscriptionId:
+                  type: string
+              required: [subscriptionId]
+      responses:
+        '200':
+          description: Test sent
+
+components:
+  parameters:
+    DocumentId:
+      name: documentId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    TemplateId:
+      name: templateId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    VersionId:
+      name: versionId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    DocumentIngestRequest:
+      type: object
+      properties:
+        sourceChannel:
+          type: string
+          enum: [upload, watched_storage]
+        originalUri:
+          type: string
+          format: uri
+        filename:
+          type: string
+        checksum:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+      required: [sourceChannel, originalUri, filename, checksum]
+    DocumentIngestResponse:
+      type: object
+      properties:
+        documentId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [Uploaded]
+      required: [documentId, status]
+    DocumentStatus:
+      type: object
+      properties:
+        documentId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+            - Uploaded
+            - Classified
+            - Extracted
+            - EnrichedPre
+            - Validated
+            - PendingReview
+            - EnrichedPost
+            - Exported
+            - Failed
+            - Exception
+        classification:
+          $ref: '#/components/schemas/Classification'
+        templateVersionId:
+          type: string
+          format: uuid
+          nullable: true
+        ruleVersions:
+          type: object
+          properties:
+            extractionRuleVersionId:
+              type: string
+              format: uuid
+            validationRuleVersionId:
+              type: string
+              format: uuid
+        webhookStates:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookEvent'
+      required: [documentId, status]
+    Classification:
+      type: object
+      properties:
+        type:
+          type: string
+        confidence:
+          type: number
+          format: float
+        ambiguousCandidates:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+              confidence:
+                type: number
+      required: [type, confidence]
+    ClassificationDecision:
+      type: object
+      properties:
+        chosenType:
+          type: string
+        reason:
+          type: string
+      required: [chosenType]
+    TemplateCreateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        documentType:
+          type: string
+        description:
+          type: string
+      required: [name, documentType]
+    TemplateVersionCreateRequest:
+      type: object
+      properties:
+        version:
+          type: string
+        coordinates:
+          type: array
+          items:
+            $ref: '#/components/schemas/TemplateField'
+        tolerances:
+          type: object
+          properties:
+            shiftPx:
+              type: integer
+            rotationDeg:
+              type: number
+        outputSchemaVersion:
+          type: string
+      required: [version, coordinates, outputSchemaVersion]
+    TemplateField:
+      type: object
+      properties:
+        fieldId:
+          type: string
+        page:
+          type: integer
+        bbox:
+          type: array
+          items:
+            type: number
+          minItems: 4
+          maxItems: 4
+        type:
+          type: string
+          enum: [kv, table, mark, signature]
+        mappingPath:
+          type: string
+      required: [fieldId, page, bbox, type, mappingPath]
+    Template:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        documentType:
+          type: string
+    TemplateVersion:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        templateId:
+          type: string
+          format: uuid
+        version:
+          type: string
+        status:
+          type: string
+          enum: [draft, live, retired]
+        coordinates:
+          type: array
+          items:
+            $ref: '#/components/schemas/TemplateField'
+    ValidationSubmission:
+      type: object
+      properties:
+        lockId:
+          type: string
+          format: uuid
+        result:
+          type: string
+          enum: [validated, exception, illegible]
+        corrections:
+          type: array
+          items:
+            $ref: '#/components/schemas/Correction'
+        notes:
+          type: string
+      required: [lockId, result]
+    Correction:
+      type: object
+      properties:
+        fieldPath:
+          type: string
+        previousValue:
+          type: string
+        correctedValue:
+          type: string
+          nullable: true
+        confidence:
+          type: number
+        reasonCode:
+          type: string
+      required: [fieldPath, previousValue]
+    Lock:
+      type: object
+      properties:
+        lockId:
+          type: string
+          format: uuid
+        documentId:
+          type: string
+          format: uuid
+        holderUserId:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+      required: [lockId, documentId, holderUserId, expiresAt]
+    QueueStatus:
+      type: object
+      properties:
+        stages:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              depth:
+                type: integer
+              delayed:
+                type: integer
+              failed:
+                type: integer
+              dlq:
+                type: integer
+              p95LatencyMs:
+                type: number
+    WebhookEvent:
+      type: object
+      properties:
+        eventType:
+          type: string
+        deliveredAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [pending, delivered, failed, retrying]
+
