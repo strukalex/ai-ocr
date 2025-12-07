@@ -3,7 +3,7 @@
 ## Prereqs
 
 - Docker/Docker Compose available; kubectl/helm for deployment targets.
-- Node 18+, pnpm; ensure `nx` CLI available (`pnpm dlx nx --version`).
+- Node 24+, pnpm; ensure `nx` CLI available (`pnpm dlx nx --version`).
 - Local services: PostgreSQL, Redis, MinIO; Keycloak for SSO; Ghostscript (v9.50+) installed on host.
 
 ## Setup

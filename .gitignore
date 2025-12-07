@@ -1,1 +1,27 @@
 .specstory/
+# Node / Nx
+node_modules/
+dist/
+build/
+tmp/
+.nx/cache/
+**/coverage/
+*.tsbuildinfo
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# Logs & temps
+*.log
+npm-debug.log*
+pnpm-debug.log*
+*.tmp
+*.swp
+
+# Tooling/IDE
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
