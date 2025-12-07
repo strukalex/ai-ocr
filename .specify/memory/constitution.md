@@ -104,4 +104,10 @@ formal amendment.
 - Ratification and amendment dates are recorded; version increments follow
   semantic versioning aligned to impact above.
 
+### Amendment 2025-12-07: Active Learning Deferral (Scope-Limited)
+- Context: Active learning (MLflow + Temporal retraining workflow with staged/live model promotion) is deferred for the current delivery cycle.
+- Permission: Deferred delivery is allowed for this cycle only, provided correction logging remains in place and no automated promotion/retraining is attempted.
+- Conditions: (a) No model promotion via MLflow/Temporal in this cycle; (b) data/corrections must still be logged for future training; (c) revisit and schedule MLflow + Temporal implementation in the next planning cycle; (d) re-run constitution check when reintroducing active learning.
+- Impact: This is a temporary scope deferral; failure to schedule in the next cycle requires a new amendment.
+
 **Version**: 1.4.0 | **Ratified**: 2025-12-06 | **Last Amended**: 2025-12-06

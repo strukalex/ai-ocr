@@ -132,10 +132,10 @@ Operators define document templates that specify where information appears on st
 - **FR-003**: Auto-classify document type without submitter input; detect ambiguous classifications and pause for human confirmation with explanation.
 - **FR-004**: Handle previously unseen document types by routing to exception handling with capture of patterns for future configuration.
 - **FR-005**: Allow operators to choose processing profiles per document type with runtime switchable AI/ML tiering (primary OCR, secondary service, structured model, unstructured fallback).
-- **FR-006**: Allow operators to control when learning from corrections is applied versus using fixed rules; provide a safe toggle and scheduling for applying improvements.
+- **FR-006**: Allow operators to control when learning from corrections is applied versus using fixed rules; provide a safe toggle (with rollback capability and staged rollout validation) and scheduling for applying improvements.
 - **FR-007**: Version every extraction rule set and validation rule set; support rollback while preserving associations to documents processed under prior versions.
 - **FR-008**: Extract printed and handwritten text for both fixed-layout forms and flexible layouts; split multi-part submissions into logical units before extraction.
-- **FR-009**: Normalize, categorize, and refine extracted values based on content (e.g., classify vendor type, normalize dates/currencies).
+- **FR-009**: Normalize, categorize, and refine extracted values based on content (e.g., classify vendor type as "Medical Supplier" vs "Office Supplier"; normalize dates to ISO format and currencies to USD equivalents; categorize document priority as "High" vs "Standard" based on amount thresholds; standardize address formats and identify shipping regions).
 - **FR-010**: Validate extracted data for internal consistency (totals, dates, required fields) using configurable business rules.
 - **FR-011**: Enrich data with external lookups and verify against external business systems to prevent duplicates or policy violations; on failure, record status and continue processing other documents.
 - **FR-012**: Identify low-confidence or failed validations and route to human reviewers with queues by content, risk, and business rules; high-risk items go to senior validators automatically.
@@ -144,18 +144,16 @@ Operators define document templates that specify where information appears on st
 - **FR-015**: Notify submitters automatically when intervention is required (unprocessable, missing pages, ambiguous type) with reasons and resubmission guidance.
 - **FR-016**: Send real-time status change notifications/webhooks to external systems and allow routing based on extracted content values, not only confidence.
 - **FR-017**: Maintain immutable audit records for every data change (who, when, what) that are tamper-resistant and searchable.
-- **FR-018**: Enforce role-based access (viewer, validator, administrator and operator at minimum) with enterprise identity integration and a username/password alternative.
+- **FR-018**: Enforce role-based access (viewer, validator, administrator, operator at minimum) with enterprise SSO/SAML/OIDC integration and a username/password fallback for users without SSO access; identity adapters must be pluggable (e.g., Keycloak) and consistently applied across API, workers, and UIs.
 - **FR-019**: Enable search across processed documents by content and metadata, status, submitter, and key extracted fields.
-- **FR-020**: Persist human corrections in structured form and use them to reduce recurrence of similar errors; operators can monitor and trigger improvement runs.
+- **FR-020**: Persist human corrections in structured form and use them to reduce recurrence of similar errors (targeting at least 30% reduction in identical field-level errors over the next 1,000 processed documents of that type, per SC-008); operators can monitor and trigger improvement runs.
 - **FR-021**: Ensure observability on processing flows (tracing, logging, metrics) and emit state-change webhooks for critical paths.
 - **FR-022**: Keep data schemas and extraction templates versioned with rollback support so downstream integrations remain compatible.
 - **FR-023**: Provide automated test coverage for critical backend, frontend, and end-to-end flows with keyboard UX checks.
-- **FR-024**: Exclude out-of-scope items for v1 (redaction/masking, BPM/approval engines, end-user rule authoring, mobile apps, concurrent 
-editing by multiple people).
+- **FR-024**: Exclude out-of-scope items for v1: redaction/masking, BPM/approval engines, end-user rule authoring, mobile apps. Multi-user concurrent editing without locking remains out of scope; document locking (FR-014) governs access collisions.
 - **FR-025**: Allow operators to define and manage layout-based templates for structured documents (invoices, forms, receipts), including coordinates for key-value fields, selection marks, signature boxes, and tables (with cross-page support), and map extracted output to those fields for direct export to downstream systems.
 - **FR-026**: Template workflows must validate input quality requirements (clear scans; PDF/JPG/PNG/TIFF) and compile/deploy within minutes to support rapid iteration across document variations.
-- **FR-027**: The system must allow extracted text values to be automatically categorized into business-relevant labels (e.g., "Medical Supplier" vs "Office Supplier" from vendor names) to support downstream routing and reporting.
-- **FR-028**: The system must integrate with the organization's existing identity system for single sign-on while supporting direct username/password login for users without SSO access.
+- **FR-027**: The system must allow extracted text values to be automatically categorized into business-relevant labels (e.g., "Medical Supplier" vs "Office Supplier" from vendor names; "High Priority" vs "Standard" from invoice amounts; "Domestic" vs "International" from shipping addresses; "New Customer" vs "Returning Customer" from account patterns) to support downstream routing and reporting.
 - **FR-029**: Before sending data to external systems, users must be able to review a combined view showing both extracted information and any supplemental data added during processing, with the ability to approve or reject the export.
 - **FR-030**: Supplemental information lookups must complete before validation runs so that business rules can verify relationships between extracted and supplemented data; additional enrichment may occur after validation to assemble the full export-ready object.
 - **FR-031**: When template matching is partial or below confidence thresholds, the system must fall back to flexible extraction; if confidence remains low, route to exception/human review to avoid silent mis-mapping.
@@ -207,6 +205,25 @@ Documents transition through the following states during processing:
 - Documents in **Pending Review** transition to **Validated** after human correction (which implies re-validation) before proceeding to **Enriched (Post-Validation)**, or to **Exception** if marked illegible/unprocessable
 - **Enriched (Pre-Validation)** must occur before **Validated**; **Enriched (Post-Validation)** runs after validation/review to assemble export-ready data without bypassing validation requirements
 - Documents transition from **Enriched (Post-Validation)** to **Exported** when post-validation enrichment completes successfully AND (final integration review is approved if required for that document type OR no final review is configured and enrichment completed without errors)
+
+### Confidence Thresholds
+
+The following confidence thresholds govern automated processing decisions:
+
+| Stage | Threshold | Behavior |
+|-------|-----------|----------|
+| Classification | ≥ 0.85 | Auto-proceed; < 0.85 routes to human confirmation |
+| OCR Field Extraction | ≥ 0.90 | Field accepted as-is |
+| OCR Field Extraction | 0.70–0.89 | Field flagged for review but processing continues |
+| OCR Field Extraction | < 0.70 | Document routes to Pending Review |
+| Template Match | ≥ 0.80 | Use template extraction |
+| Template Match | 0.50–0.79 | Fallback to flexible extraction with review flag |
+| Template Match | < 0.50 | Route to Exception for manual template assignment |
+| Validation Rules | Pass all | Proceed to enrichment/export |
+| Validation Rules | Recoverable failure | Route to Pending Review with correction guidance |
+| Validation Rules | Unrecoverable failure | Route to Exception |
+
+These thresholds are configurable per document type via operator profiles (FR-005).
 
 ### Security Requirements
 
