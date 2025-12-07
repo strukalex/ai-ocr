@@ -1,0 +1,2 @@
+export const QUEUE_OPTIONS_TOKEN = 'QUEUE_OPTIONS_TOKEN';
+

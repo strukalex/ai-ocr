@@ -8,55 +8,55 @@
 ## Phase 1: Foundation & Shared Contracts
 **Goal**: Scaffolding the Nx workspace and strictly typed contracts.
 
-- [ ] T001 Initialize Nx workspace with NestJS and React presets
+- [X] T001 Initialize Nx workspace with NestJS and React presets
   - **Files**: `nx.json`, `package.json`
   - **Done**: `nx graph` shows empty workspace with correct presets.
 
-- [ ] T002 Create `@my-org/shared-types` library
+- [X] T002 Create `@my-org/shared-types` library
   - **Files**: `packages/shared-types/src/index.ts`, `packages/shared-types/project.json`
   - **Done**: `nx build shared-types` passes.
 
-- [ ] T003 Implement Document Ingest DTOs with `class-validator`
+- [X] T003 Implement Document Ingest DTOs with `class-validator`
   - **Files**: `packages/shared-types/src/lib/dtos/ingest.dto.ts`
   - **Dependencies**: `@my-org/shared-types`
   - **Done**: Unit tests verify `class-validator` rejects invalid payloads.
 
-- [ ] T004 Implement Document Status & Lifecycle DTOs
+- [X] T004 Implement Document Status & Lifecycle DTOs
   - **Files**: `packages/shared-types/src/lib/dtos/lifecycle.dto.ts`, `packages/shared-types/src/lib/enums/status.enum.ts`
   - **Dependencies**: `@my-org/shared-types`
   - **Done**: Enum matches `spec.md` lifecycle states exactly.
 
-- [ ] T005 [P] Create `packages/database` library with Prisma ORM
+- [X] T005 [P] Create `packages/database` library with Prisma ORM
   - **Files**: `packages/database/prisma/schema.prisma`, `packages/database/src/lib/database.module.ts`
   - **Dependencies**: `@prisma/client`, `prisma`
   - **Done**: `npx prisma db push` creates `Document` table in local Postgres and tests can query it.
 
-- [ ] T006 [P] Create `packages/queue` library with BullMQ configuration
+- [X] T006 [P] Create `packages/queue` library with BullMQ configuration
   - **Files**: `packages/queue/src/lib/queue.module.ts`, `packages/queue/src/lib/queue.service.ts`
   - **Dependencies**: `@my-org/queue`
   - **Done**: Test connects to Redis and creates a queue.
 
-- [ ] T007 [P] Create `packages/storage` library with MinIO integration
+- [X] T007 [P] Create `packages/storage` library with MinIO integration
   - **Files**: `packages/storage/src/lib/storage.module.ts`, `packages/storage/src/lib/storage.service.ts`
   - **Dependencies**: `@my-org/storage`
   - **Done**: Test uploads and retrieves a file from MinIO.
 
-- [ ] T008 [P] Create `packages/observability` library with OpenTelemetry
+- [X] T008 [P] Create `packages/observability` library with OpenTelemetry
   - **Files**: `packages/observability/src/lib/tracing.module.ts`, `packages/observability/src/lib/logger.service.ts`
   - **Dependencies**: `@my-org/observability`
   - **Done**: Logs appear in stdout in JSON format with trace IDs.
 
-- [ ] T032 [P] Implement Auth DTOs & Guards (Shared)
+- [X] T032 [P] Implement Auth DTOs & Guards (Shared)
   - **Files**: `packages/shared-types/src/lib/auth/*`
   - **Dependencies**: `@my-org/shared-types`
   - **Done**: Auth interfaces and mock guards are defined.
 
-- [ ] T044 Implement Security Baseline (TLS, At-Rest Encryption, Session Timeout)
+- [X] T044 Implement Security Baseline (TLS, At-Rest Encryption, Session Timeout)
   - **Files**: `apps/api/src/config/security.config.ts`, `apps/api/src/app/security/security.module.ts`, `helm/values.yaml` (or equivalent runtime config)
   - **Dependencies**: `@my-org/shared-types`
   - **Done**: TLS 1.2+ enforced, AES-256 at-rest config documented, 30m idle session timeout applied and tested.
 
-- [ ] T045 Implement Auth/Audit Logging for Authentication & Authorization Events
+- [X] T045 Implement Auth/Audit Logging for Authentication & Authorization Events
   - **Files**: `packages/observability/src/lib/audit-logger.ts`, `apps/api/src/app/auth/*`
   - **Dependencies**: `@my-org/observability`, `@my-org/shared-types`
   - **Done**: AuthN/AuthZ events emit audit logs with user, roles, outcome, trace id.
