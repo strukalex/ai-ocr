@@ -18,9 +18,21 @@
 - Rationale: Validated corrections feed labeled datasets, logged to MLflow with metrics/artifacts; Temporal orchestrates retraining/eval/promotion with staged/live slots, rollback/fallback for regressions.
 - Alternatives considered: Ad-hoc retraining scripts (no auditability/rollback), manual promotions (slow, error-prone, violates constitution active-learning mandate).
 
-### Decision: Keyboard-first validation UI with Redis-backed document locks
-- Rationale: react-hotkeys-hook + Mantine + Label Studio embedding ensures keyboard-first; Redis locks (TTL + heartbeat) prevent collisions and surface holder identity; aligns with FR-012/013/014 and SC-002/003.
-- Alternatives considered: Optimistic concurrency only (risk of overwrite), client-only locks (unreliable), mouse-centric Label Studio defaults (fails keyboard-first constraint).
+### Decision: Label Studio with Custom Plugin + Hybrid Keyboard Control
+- Rationale: Meets FR-012/013/014 by using Label Studio Plugins (JavaScript extensions) to bridge external react-hotkeys-hook events to Label Studio's internal annotation lifecycle. Plugins can listen to custom events from the parent React app and programmatically call Label Studio's submitAnnotation() or skipTask() methods. Pure react-hotkeys-hook conflicts with Label Studio's internal keymap, and embedded mode doesn't expose programmatic control. Redis-backed document locks (TTL + heartbeat) remain valid.
+- Alternatives considered: Pure react-hotkeys-hook without Label Studio integration (fails FR-013 requirement for side-by-side extracted/supplemental data and region zoom), Building a custom annotation UI from scratch (violates timeline and increases maintenance burden).
+
+### Decision: json-rules-engine for Serializable Business Rules with Versioned Storage
+- Rationale: Meets FR-007 (versioning + rollback) and FR-010 (configurable rules) by storing rules as JSON in PostgreSQL with rule_version_id, effective_from, and deprecated_at columns. Rules are fetched at runtime and executed via json-rules-engine. Supports custom operators for domain-specific validations (e.g., tax rate calculations) and event-driven architecture.
+- Alternatives considered: Hardcoded TypeScript validation classes (violates FR-007 requirement for dynamic rollback without code deploys), JSON Logic (simpler but lacks event system and custom operator extensibility), Commercial BRMS (overkill, violates OSS preference).
+
+### Decision: Ghostscript (ghostscript4js) + OpenCV for Normalization Pipeline
+- Rationale: Meets FR-032 (PDF/A-2b normalization) and FR-002 (deskew/noise reduction). Ghostscript converts all PDFs to PDF/A-2b standard; OpenCV handles advanced image preprocessing (deskew, denoise, binarize) as explicitly preferred by the Constitution.
+- Alternatives considered: Commercial PDF SDKs (Apryse, Qoppa — violated OSS requirement), Pure JavaScript PDF libs (pdf-lib, pdfjs-dist — lack robust PDF/A conversion), Sharp.js (fast but less robust for complex deskewing/binarization).
+
+### Decision: GPT-4o Mini for Field-Level Categorization with Optional Llama 3 Fallback
+- Rationale: Meets FR-027 by using GPT-4o Mini API for low-latency field categorization during the enrichment stage. For high-volume deployments, a fine-tuned Llama 3 model can replace API calls (requires initial training on validated corrections per active learning loop).
+- Alternatives considered: Rule-based categorization (fails for ambiguous vendor names), GPT-4o (overkill, 3x cost of Mini for simple categorization), Claude 3 Haiku (comparable to GPT-4o Mini but less proven for structured output).
 
 ### Decision: Enrichment ordering and resiliency
 - Rationale: Pre-validation enrichment is mandatory to satisfy FR-030; post-validation enrichment optional for export assembly. Both modeled as separate queues with retries/backoff and DLQ; partial documents allowed but state machine forbids skipping pre-validation enrichment before validation.

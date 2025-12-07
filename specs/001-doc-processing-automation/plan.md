@@ -7,12 +7,12 @@
 
 ## Summary
 
-Implement a four-group async pipeline (ingestion-worker: intake→classify→OCR; processing-worker: extract→enrich-pre→validate-review; enrichment-worker: enrich-post; export-worker: export) with BullMQ-managed queues, idempotent workers, and DLQs; deliver template-based extraction with partial-match fallback; embed active learning that logs validated corrections into PostgreSQL and triggers manual retraining when corrections exceed 1000; and ship a keyboard-first validation UI (Mantine + Label Studio + react-hotkeys-hook) with Redis-backed document locking and webhook-driven status updates.
+Implement a four-group async pipeline (ingestion-worker: intake→classify→OCR; processing-worker: extract→enrich-pre→validate-review; enrichment-worker: enrich-post; export-worker: export) with BullMQ-managed queues, idempotent workers, and DLQs. Normalization via Ghostscript/Sharp; template-based extraction with partial-match fallback; field categorization via GPT-4o Mini; validation via json-rules-engine; active learning logging to PostgreSQL; and a keyboard-first validation UI (Mantine + Label Studio Plugin + react-hotkeys-hook) with Redis-backed document locking and webhook-driven status updates.
 
 ## Technical Context
 
 **Language/Version**: TypeScript (strict) — Nx monorepo with NestJS backend, React 18 frontend  
-**Primary Dependencies**: Nx, NestJS (DDD modules, class-validator), Prisma, Mantine UI, @heartexlabs/label-studio, TanStack Query, BullMQ, Redis, OpenTelemetry, OpenCV, MinIO SDK, Keycloak adapters  
+**Primary Dependencies**: Nx, NestJS (DDD modules, class-validator), Prisma, Mantine UI, @heartexlabs/label-studio, TanStack Query, BullMQ, Redis, OpenTelemetry, ghostscript4js, sharp, json-rules-engine, openai, openCV, MinIO SDK, Keycloak adapters  
 **Storage**: PostgreSQL (Prisma ORM as sole DAL), MinIO (S3-compatible originals + normalized artifacts), Redis for queues/cache/locks  
 **Testing**: Jest + supertest + testcontainers (backend); React Testing Library + Playwright (frontend); contract tests for webhooks; coverage gate ≥80%  
 **Target Platform**: Dockerized services deployed via Helm to Kubernetes; Linux runtime; OTel collectors configured cluster-wide  
@@ -35,7 +35,7 @@ Implement a four-group async pipeline (ingestion-worker: intake→classify→OCR
 - Observability/events: OTel tracing across pipeline, structured JSON logs, metrics, webhooks on all state changes with retry/alerts, contract tests. **Status: PASS**
 - Data/schema: Templates and rule sets schema-versioned with rollback; Prisma migrations with downgrade path. **Status: PASS**
 - Error handling: Standard NestJS HTTP exceptions; custom codes documented and trace-linked. **Status: PASS**
-- Preprocessing: OpenCV for deskew/noise/binarization; no proprietary SDKs. **Status: PASS**
+- Preprocessing: Ghostscript for PDF/A-2b + OpenCV for deskew/noise; no proprietary SDKs. **Status: PASS**
 - UX & scope: Keyboard-first validation; scope exclusions (redaction, BPM, mobile, end-user schema design) honored. **Status: PASS**
 
 ## Project Structure

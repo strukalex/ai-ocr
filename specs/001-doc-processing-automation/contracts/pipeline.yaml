@@ -816,11 +816,24 @@ components:
         documentId:
           type: string
           format: uuid
+        parentDocumentId:
+          type: string
+          format: uuid
+          nullable: true
+          description: ID of the original source document if this is a split part
+        childDocumentIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          nullable: true
+          description: IDs of documents split from this one (if status is Split)
         status:
           type: string
           enum:
             - Uploaded
             - Classified
+            - Split
             - Extracted
             - EnrichedPre
             - Validated
@@ -947,6 +960,19 @@ components:
           type: string
         tableConfig:
           $ref: '#/components/schemas/TableFieldConfig'
+        categorizationConfig:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+            categories:
+              type: array
+              items:
+                type: string
+            modelTier:
+              type: string
+              enum: [gpt-4o-mini, llama-3-8b]
+          description: Configuration for LLM-based field categorization
         confidenceThreshold:
           type: number
           format: float
@@ -1385,6 +1411,17 @@ components:
           enum: [traditional, layoutlm, llm]
         enrichmentPolicies:
           type: object
+          properties:
+            preValidation:
+              type: array
+              items:
+                type: string
+              description: List of enrichment services to run before validation (e.g. external data fetch)
+            postValidation:
+              type: array
+              items:
+                type: string
+              description: List of enrichment services to run after validation (e.g. export payload assembly)
         retry:
           type: object
         enabled:
@@ -1411,6 +1448,15 @@ components:
           type: string
         enrichmentPolicies:
           type: object
+          properties:
+            preValidation:
+              type: array
+              items:
+                type: string
+            postValidation:
+              type: array
+              items:
+                type: string
         retry:
           type: object
       required: [name, strategy, ocrPrimary, ocrSecondary, classificationTier]
@@ -1427,6 +1473,15 @@ components:
           type: string
         enrichmentPolicies:
           type: object
+          properties:
+            preValidation:
+              type: array
+              items:
+                type: string
+            postValidation:
+              type: array
+              items:
+                type: string
         retry:
           type: object
     RuleVersion:
@@ -1441,6 +1496,9 @@ components:
           type: string
         schemaId:
           type: string
+        definition:
+          type: object
+          description: JSON definition of the rule logic (json-rules-engine schema), model config, or field constraints
         rolloutPolicy:
           type: string
         rollbackPointer:
@@ -1466,9 +1524,12 @@ components:
           type: string
         schemaId:
           type: string
+        definition:
+          type: object
+          description: JSON definition of the rule logic (json-rules-engine schema), model config, or field constraints
         rolloutPolicy:
           type: string
-      required: [documentType, version, schemaId]
+      required: [documentType, version, schemaId, definition]
     WebhookSubscriptionCreateRequest:
       type: object
       properties:

@@ -2,15 +2,15 @@
 
 ## Core Entities
 
-- Document: id, source_channel, checksum, original_uri (immutable), canonical_uri (PDF/A-2b), status (Uploaded|Classified|Extracted|EnrichedPre|Validated|PendingReview|EnrichedPost|Exported|Failed|Exception), classification {type, confidence, ambiguous_candidates[]}, processing_profile_id, template_version_id?, extraction_rule_version_id, validation_rule_version_id, pre_enrichment_snapshot_id, post_enrichment_snapshot_id, export_schema_version, current_lock_id?, audit_trail_id
+- Document: id, source_channel, checksum, original_uri (immutable), canonical_uri (PDF/A-2b), status (Uploaded|Classified|Split|Extracted|EnrichedPre|Validated|PendingReview|EnrichedPost|Exported|Failed|Exception), classification {type, confidence, ambiguous_candidates[]}, processing_profile_id, template_version_id?, extraction_rule_version_id, validation_rule_version_id, pre_enrichment_snapshot_id, post_enrichment_snapshot_id, export_schema_version, current_lock_id?, audit_trail_id, parent_document_id?, root_document_id?
 - Document lifecycle detail: state_reason, validation_issues[] {field_path?, issue_code, message, severity}, external_status {system, status, message}
 - PageArtifact: id, document_id, page_number, image_uri, ocr_payload (primary/secondary), layout_blocks (for LayoutLM), checksum
 - Template: id, name, document_type, description?, created_at, updated_at
 - TemplateVersion: id, template_id, version, status (draft|live|retired), coordinates (kv, tables, marks, signatures), tolerances, match_policy {min_confidence, max_shift_px, max_rotation_deg, partial_match_action}, fallback_extraction_enabled, fields -> output mapping, validators, output_schema_version, created_by, deployed_at
-- TemplateField: field_id, page, bbox, type (kv|table|mark|signature), mapping_path, table_config {columns[], header_rows, allow_multipage, merge_tolerance_px}?, confidence_threshold?
-- ProcessingProfile: id, name, strategy (fast|accurate|balanced), ocr_primary (PaddleOCR), ocr_secondary (Azure DI), classification_tier (traditional|layoutlm|llm), enrichment_policies, retry/backoff config, enabled, created_at, updated_at
-- ExtractionRuleVersion: id, document_type, version, schema_id/version, model_slot (v1/v2/v3...), rollout_policy, rollback_pointer
-- ValidationRuleVersion: id, document_type, version, ruleset (business checks), blocking vs warning, rollback_pointer
+- TemplateField: field_id, page, bbox, type (kv|table|mark|signature), mapping_path, table_config {columns[], header_rows, allow_multipage, merge_tolerance_px}?, categorization_config { enabled, categories[], model_tier }?, confidence_threshold?
+- ProcessingProfile: id, name, strategy (fast|accurate|balanced), ocr_primary (PaddleOCR), ocr_secondary (Azure DI), classification_tier (traditional|layoutlm|llm), enrichment_policies { pre_validation[], post_validation[] }, retry/backoff config, enabled, created_at, updated_at
+- ExtractionRuleVersion: id, document_type, version, schema_id/version, model_slot (v1/v2/v3...), definition (JSON model config, prompts, or field definitions), rollout_policy, rollback_pointer
+- ValidationRuleVersion: id, document_type, version, ruleset (business checks), definition (json-rules-engine schema with conditions/events), blocking vs warning, rollback_pointer
 - EnrichmentJob: id, document_id, stage (pre|post), payload, status, attempts, next_retry_at, dlq_reason?
 - ValidationSession: id, document_id, lock_id, opened_by, opened_at, shortcuts_profile, submitted_at, result (validated|exception|illegible), corrections[]
 - Lock: id, document_id, holder_user_id, acquired_at, ttl, expires_at, state (active|expired|released)
@@ -31,6 +31,7 @@
 ## Relationships
 
 - Document 1..* PageArtifact (immutable link to canonical pages)
+- Document 0..* Document (Parent-Child relationship for split documents)
 - Document 0..1 TemplateVersion (when matched to structured form)
 - Document 1 ProcessingProfile; 1 ExtractionRuleVersion; 1 ValidationRuleVersion
 - Document 0..* EnrichmentJob (pre must complete before validation; post after validation/review)
@@ -48,9 +49,10 @@
 ## State Machine
 
 **Happy path:**
-- Uploaded → Classified → Extracted → EnrichedPre → Validated → EnrichedPost → Exported
+- Uploaded → Classified → (Optional: Split) → Extracted → EnrichedPre → Validated → EnrichedPost → Exported
 
 **Review/Exception flows:**
+- Uploaded → Classified (Multi-part detected) → Split → [Child Documents start at Classified/Extracted]
 - Validated → PendingReview (low confidence, high-risk flags, recoverable failures) → Validated (after corrections + re-validation) → EnrichedPost → Exported
 - Validated → Exception (uncorrectable business rule failure or external unavailable after retries)
 - PendingReview → Exception (if marked illegible/unprocessable by validator)
@@ -67,6 +69,7 @@
 - Failed: Unrecoverable processing errors
 - Exception: Requires manual intervention but potentially recoverable
 - Exported: Successfully completed (terminal success state)
+- Split: Parent document successfully processed into child documents (terminal for parent, children proceed)
 
 ## Validation & Business Rules
 
