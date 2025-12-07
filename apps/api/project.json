@@ -66,6 +66,18 @@
       "options": {
         "passWithNoTests": true
       }
+    },
+    "prisma-generate": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm prisma generate --schema packages/database/prisma/schema.prisma"
+      }
+    },
+    "seed": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node -e \"console.log('TODO: implement seed script');\""
+      }
     }
   }
 }
