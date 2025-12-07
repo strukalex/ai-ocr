@@ -145,7 +145,7 @@ Operators define document templates that specify where information appears on st
 - **FR-016**: Send real-time status change notifications/webhooks to external systems and allow routing based on extracted content values, not only confidence.
 - **FR-017**: Maintain immutable audit records for every data change (who, when, what) that are tamper-resistant and searchable.
 - **FR-018**: Enforce role-based access (viewer, validator, administrator and operator at minimum) with enterprise identity integration and a username/password alternative.
-- **FR-019**: Enable search across processed documents by content and metadata, including rule version, status, submitter, and key extracted fields.
+- **FR-019**: Enable search across processed documents by content and metadata, status, submitter, and key extracted fields.
 - **FR-020**: Persist human corrections in structured form and use them to reduce recurrence of similar errors; operators can monitor and trigger improvement runs.
 - **FR-021**: Ensure observability on processing flows (tracing, logging, metrics) and emit state-change webhooks for critical paths.
 - **FR-022**: Keep data schemas and extraction templates versioned with rollback support so downstream integrations remain compatible.

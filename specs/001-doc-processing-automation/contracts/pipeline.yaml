@@ -4,10 +4,14 @@ info:
   version: 0.1.0
 servers:
   - url: https://api.example.com
+security:
+  - OidcAuth: []
+  - BearerAuth: []
 paths:
   /documents:
     post:
       summary: Ingest a document (upload metadata and enqueue intake)
+      x-roles: [operator, admin]
       requestBody:
         required: true
         content:
@@ -24,6 +28,7 @@ paths:
   /documents/{documentId}:
     get:
       summary: Get document status and lifecycle data
+      x-roles: [viewer, validator, operator, admin]
       parameters:
         - $ref: '#/components/parameters/DocumentId'
       responses:
@@ -36,6 +41,7 @@ paths:
   /documents/{documentId}/classification/confirm:
     post:
       summary: Confirm or override an ambiguous classification
+      x-roles: [validator, operator, admin]
       parameters:
         - $ref: '#/components/parameters/DocumentId'
       requestBody:
@@ -47,9 +53,64 @@ paths:
       responses:
         '200':
           description: Classification updated and queued for extraction
+  /documents/{documentId}/corrections:
+    get:
+      summary: List validator corrections for a document
+      x-roles: [validator, operator, admin]
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: Corrections with provenance
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CorrectionLog'
+  /learning/corrections/summary:
+    get:
+      summary: Aggregate corrections by document type and field
+      x-roles: [operator, admin]
+      parameters:
+        - in: query
+          name: documentType
+          schema:
+            type: string
+        - in: query
+          name: fieldPath
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Aggregated correction metrics
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CorrectionAggregate'
+  /learning/retrain:
+    post:
+      summary: Manually trigger a retraining job using logged corrections
+      x-roles: [operator, admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RetrainTriggerRequest'
+      responses:
+        '202':
+          description: Retraining triggered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetrainTriggerResponse'
   /templates:
     post:
       summary: Create a template definition
+      x-roles: [operator, admin]
       requestBody:
         required: true
         content:
@@ -66,6 +127,7 @@ paths:
   /templates/{templateId}/versions:
     post:
       summary: Create a versioned template with coordinates and mappings
+      x-roles: [operator, admin]
       parameters:
         - $ref: '#/components/parameters/TemplateId'
       requestBody:
@@ -84,6 +146,7 @@ paths:
   /templates/{templateId}/versions/{versionId}/deploy:
     post:
       summary: Deploy or rollback a template version
+      x-roles: [operator, admin]
       parameters:
         - $ref: '#/components/parameters/TemplateId'
         - $ref: '#/components/parameters/VersionId'
@@ -106,6 +169,7 @@ paths:
   /validation/{documentId}/lock:
     post:
       summary: Acquire a validation lock for keyboard-first review
+      x-roles: [validator, admin]
       parameters:
         - $ref: '#/components/parameters/DocumentId'
       requestBody:
@@ -134,6 +198,7 @@ paths:
                 $ref: '#/components/schemas/Lock'
     delete:
       summary: Release a validation lock
+      x-roles: [validator, admin]
       parameters:
         - $ref: '#/components/parameters/DocumentId'
       responses:
@@ -142,6 +207,7 @@ paths:
   /validation/{documentId}/submit:
     post:
       summary: Submit validation results and corrections
+      x-roles: [validator, admin]
       parameters:
         - $ref: '#/components/parameters/DocumentId'
       requestBody:
@@ -156,6 +222,7 @@ paths:
   /queues/status:
     get:
       summary: Inspect pipeline queue health (for ops/alerting)
+      x-roles: [operator, admin]
       responses:
         '200':
           description: Queue metrics
@@ -163,9 +230,455 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/QueueStatus'
+  /queues/{queueName}/dlq:
+    get:
+      summary: Inspect DLQ items for a queue
+      x-roles: [operator, admin]
+      parameters:
+        - $ref: '#/components/parameters/QueueName'
+      responses:
+        '200':
+          description: DLQ items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DlqItem'
+    post:
+      summary: Requeue a DLQ item by jobId
+      x-roles: [operator, admin]
+      parameters:
+        - $ref: '#/components/parameters/QueueName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                jobId:
+                  type: string
+              required: [jobId]
+      responses:
+        '202':
+          description: Requeued
+    delete:
+      summary: Purge DLQ for a queue
+      x-roles: [operator, admin]
+      parameters:
+        - $ref: '#/components/parameters/QueueName'
+      responses:
+        '204':
+          description: Purged
+  /intake/sources:
+    get:
+      summary: List intake sources (upload + watched storage)
+      x-roles: [operator, admin]
+      responses:
+        '200':
+          description: Intake sources
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IntakeSource'
+    post:
+      summary: Register an intake source
+      x-roles: [operator, admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntakeSourceCreateRequest'
+      responses:
+        '201':
+          description: Source created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntakeSource'
+  /intake/sources/{sourceId}:
+    patch:
+      summary: Update an intake source
+      x-roles: [operator, admin]
+      parameters:
+        - $ref: '#/components/parameters/SourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntakeSourceUpdateRequest'
+      responses:
+        '200':
+          description: Source updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntakeSource'
+    delete:
+      summary: Disable an intake source
+      x-roles: [operator, admin]
+      parameters:
+        - $ref: '#/components/parameters/SourceId'
+      responses:
+        '204':
+          description: Disabled
+  /documents/search:
+    get:
+      summary: Search documents by metadata/content/status
+      x-roles: [viewer, validator, operator, admin]
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+        - in: query
+          name: type
+          schema:
+            type: string
+        - in: query
+          name: submitter
+          schema:
+            type: string
+        - in: query
+          name: q
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DocumentStatus'
+  /documents/{documentId}/audit:
+    get:
+      summary: Get audit history for a document
+      x-roles: [viewer, validator, operator, admin]
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: Audit trail
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuditEvent'
+  /documents/{documentId}/export:
+    get:
+      summary: Get export job status for a document
+      x-roles: [viewer, operator, admin]
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: Export status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportJob'
+  /exports/{exportJobId}:
+    get:
+      summary: Inspect an export job
+      x-roles: [viewer, operator, admin]
+      parameters:
+        - $ref: '#/components/parameters/ExportJobId'
+      responses:
+        '200':
+          description: Export job
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportJob'
+  /exports/{exportJobId}/payload:
+    get:
+      summary: Retrieve export payload
+      x-roles: [viewer, operator, admin]
+      parameters:
+        - $ref: '#/components/parameters/ExportJobId'
+      responses:
+        '200':
+          description: Export payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportPayload'
+  /exports/{exportJobId}/resend:
+    post:
+      summary: Resend export payload to downstream target
+      x-roles: [operator, admin]
+      parameters:
+        - $ref: '#/components/parameters/ExportJobId'
+      responses:
+        '202':
+          description: Resend initiated
+  /review/queue:
+    get:
+      summary: List pending review items (routed by risk/content)
+      x-roles: [validator, operator, admin]
+      parameters:
+        - in: query
+          name: priority
+          schema:
+            type: string
+        - in: query
+          name: type
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Review queue
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReviewQueueItem'
+  /review/{documentId}:
+    get:
+      summary: Fetch review payload (extracted + supplemental data)
+      x-roles: [validator, operator, admin]
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: Review payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewPayload'
+  /classification/ambiguous:
+    get:
+      summary: List documents awaiting classification confirmation
+      x-roles: [validator, operator, admin]
+      responses:
+        '200':
+          description: Ambiguous classification queue
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DocumentStatus'
+  /processing-profiles:
+    get:
+      summary: List processing profiles
+      x-roles: [operator, admin]
+      responses:
+        '200':
+          description: Profiles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProcessingProfile'
+    post:
+      summary: Create a processing profile
+      x-roles: [operator, admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProcessingProfileCreateRequest'
+      responses:
+        '201':
+          description: Profile created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProcessingProfile'
+  /processing-profiles/{profileId}:
+    patch:
+      summary: Update a processing profile
+      x-roles: [operator, admin]
+      parameters:
+        - $ref: '#/components/parameters/ProfileId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProcessingProfileUpdateRequest'
+      responses:
+        '200':
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProcessingProfile'
+  /rule-versions/extraction:
+    post:
+      summary: Create extraction rule version
+      x-roles: [operator, admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuleVersionCreateRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleVersion'
+    get:
+      summary: List extraction rule versions
+      x-roles: [operator, admin]
+      responses:
+        '200':
+          description: Rule versions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RuleVersion'
+  /rule-versions/extraction/{versionId}/deploy:
+    post:
+      summary: Promote or rollback an extraction rule version
+      x-roles: [operator, admin]
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuleDeploymentRequest'
+      responses:
+        '200':
+          description: Deployment updated
+  /rule-versions/validation:
+    post:
+      summary: Create validation rule version
+      x-roles: [operator, admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuleVersionCreateRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleVersion'
+    get:
+      summary: List validation rule versions
+      x-roles: [operator, admin]
+      responses:
+        '200':
+          description: Rule versions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RuleVersion'
+  /rule-versions/validation/{versionId}/deploy:
+    post:
+      summary: Promote or rollback a validation rule version
+      x-roles: [operator, admin]
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuleDeploymentRequest'
+      responses:
+        '200':
+          description: Deployment updated
+  /webhooks/subscriptions:
+    get:
+      summary: List webhook subscriptions
+      x-roles: [operator, admin]
+      responses:
+        '200':
+          description: Subscriptions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WebhookSubscription'
+    post:
+      summary: Create a webhook subscription
+      x-roles: [operator, admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookSubscriptionCreateRequest'
+      responses:
+        '201':
+          description: Subscription created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookSubscription'
+  /webhooks/subscriptions/{subscriptionId}:
+    patch:
+      summary: Update a webhook subscription
+      x-roles: [operator, admin]
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookSubscriptionUpdateRequest'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookSubscription'
+    delete:
+      summary: Delete a webhook subscription
+      x-roles: [operator, admin]
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      responses:
+        '204':
+          description: Deleted
+  /webhooks/subscriptions/{subscriptionId}/deliveries:
+    get:
+      summary: List delivery attempts for a subscription
+      x-roles: [operator, admin]
+      parameters:
+        - $ref: '#/components/parameters/SubscriptionId'
+      responses:
+        '200':
+          description: Delivery attempts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WebhookDelivery'
   /webhooks/test:
     post:
       summary: Send a test webhook for a subscription
+      x-roles: [operator, admin]
       requestBody:
         required: true
         content:
@@ -179,8 +692,36 @@ paths:
       responses:
         '200':
           description: Test sent
+  /auth/login:
+    post:
+      summary: Username/password login (fallback to SSO)
+      x-roles: [public]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthLoginRequest'
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
 
 components:
+  securitySchemes:
+    OidcAuth:
+      type: openIdConnect
+      openIdConnectUrl: https://auth.example.com/.well-known/openid-configuration
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    PasswordAuth:
+      type: http
+      scheme: basic
   parameters:
     DocumentId:
       name: documentId
@@ -203,6 +744,40 @@ components:
       schema:
         type: string
         format: uuid
+    SubscriptionId:
+      name: subscriptionId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ExportJobId:
+      name: exportJobId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    SourceId:
+      name: sourceId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ProfileId:
+      name: profileId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    QueueName:
+      name: queueName
+      in: path
+      required: true
+      schema:
+        type: string
 
   schemas:
     DocumentIngestRequest:
@@ -218,6 +793,9 @@ components:
           type: string
         checksum:
           type: string
+        idempotencyKey:
+          type: string
+          description: Client-provided key to avoid duplicate intake
         metadata:
           type: object
           additionalProperties: true
@@ -251,6 +829,9 @@ components:
             - Exported
             - Failed
             - Exception
+        stateReason:
+          type: string
+          description: Human-readable reason for current state or failure
         classification:
           $ref: '#/components/schemas/Classification'
         templateVersionId:
@@ -266,6 +847,20 @@ components:
             validationRuleVersionId:
               type: string
               format: uuid
+        validationIssues:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationIssue'
+        externalStatus:
+          type: object
+          properties:
+            system:
+              type: string
+            status:
+              type: string
+            message:
+              type: string
+          description: Latest status from required external enrichment/validation systems
         webhookStates:
           type: array
           items:
@@ -306,6 +901,7 @@ components:
           type: string
         description:
           type: string
+          nullable: true
       required: [name, documentType]
     TemplateVersionCreateRequest:
       type: object
@@ -323,6 +919,11 @@ components:
               type: integer
             rotationDeg:
               type: number
+        matchPolicy:
+          $ref: '#/components/schemas/TemplateMatchPolicy'
+        fallbackExtractionEnabled:
+          type: boolean
+          description: Allow flexible extraction when match confidence is low
         outputSchemaVersion:
           type: string
       required: [version, coordinates, outputSchemaVersion]
@@ -344,7 +945,42 @@ components:
           enum: [kv, table, mark, signature]
         mappingPath:
           type: string
+        tableConfig:
+          $ref: '#/components/schemas/TableFieldConfig'
+        confidenceThreshold:
+          type: number
+          format: float
+          description: Minimum confidence before routing to exception/review
       required: [fieldId, page, bbox, type, mappingPath]
+    TableFieldConfig:
+      type: object
+      properties:
+        columns:
+          type: array
+          items:
+            type: string
+        headerRows:
+          type: integer
+          minimum: 0
+        allowMultipage:
+          type: boolean
+        mergeTolerancePx:
+          type: integer
+      description: Structure for table extraction including multi-page handling
+    TemplateMatchPolicy:
+      type: object
+      properties:
+        minConfidence:
+          type: number
+          format: float
+        maxShiftPx:
+          type: integer
+        maxRotationDeg:
+          type: number
+        partialMatchAction:
+          type: string
+          enum: [fallback_extraction, route_exception, require_confirmation]
+      description: Template match thresholds and fallback handling
     Template:
       type: object
       properties:
@@ -355,6 +991,16 @@ components:
           type: string
         documentType:
           type: string
+        description:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, name, documentType]
     TemplateVersion:
       type: object
       properties:
@@ -373,6 +1019,28 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/TemplateField'
+        tolerances:
+          type: object
+          properties:
+            shiftPx:
+              type: integer
+            rotationDeg:
+              type: number
+        matchPolicy:
+          $ref: '#/components/schemas/TemplateMatchPolicy'
+        fallbackExtractionEnabled:
+          type: boolean
+        outputSchemaVersion:
+          type: string
+          description: Version of the output schema for exported data
+        createdBy:
+          type: string
+          description: User ID who created this version
+        deployedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp when this version was deployed to live
     ValidationSubmission:
       type: object
       properties:
@@ -389,6 +1057,19 @@ components:
         notes:
           type: string
       required: [lockId, result]
+    ValidationIssue:
+      type: object
+      properties:
+        fieldPath:
+          type: string
+        issueCode:
+          type: string
+        message:
+          type: string
+        severity:
+          type: string
+          enum: [info, warning, error]
+      required: [issueCode, message]
     Correction:
       type: object
       properties:
@@ -404,6 +1085,88 @@ components:
         reasonCode:
           type: string
       required: [fieldPath, previousValue]
+    CorrectionLog:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        documentId:
+          type: string
+          format: uuid
+        documentType:
+          type: string
+        fieldPath:
+          type: string
+        previousValue:
+          type: string
+        correctedValue:
+          type: string
+          nullable: true
+        confidence:
+          type: number
+        reasonCode:
+          type: string
+        validatorId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, documentId, fieldPath, previousValue, validatorId, createdAt]
+    CorrectionAggregate:
+      type: object
+      properties:
+        documentType:
+          type: string
+        fieldPath:
+          type: string
+        occurrences:
+          type: integer
+        latestCorrectionAt:
+          type: string
+          format: date-time
+      required: [documentType, fieldPath, occurrences]
+    RetrainTriggerRequest:
+      type: object
+      properties:
+        documentType:
+          type: string
+        minCorrections:
+          type: integer
+          default: 1000
+        dryRun:
+          type: boolean
+      required: [documentType]
+    RetrainTriggerResponse:
+      type: object
+      properties:
+        jobId:
+          type: string
+          format: uuid
+        documentType:
+          type: string
+        minCorrections:
+          type: integer
+          description: Minimum correction count threshold that triggered this job
+        dryRun:
+          type: boolean
+          description: If true, simulates retraining without applying model updates
+        status:
+          type: string
+          enum: [pending, running, completed, failed]
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastError:
+          type: string
+          nullable: true
+        triggeredBy:
+          type: string
+          description: User ID or 'system' for automatic triggers
     Lock:
       type: object
       properties:
@@ -415,10 +1178,17 @@ components:
           format: uuid
         holderUserId:
           type: string
+        acquiredAt:
+          type: string
+          format: date-time
         expiresAt:
           type: string
           format: date-time
-      required: [lockId, documentId, holderUserId, expiresAt]
+        state:
+          type: string
+          enum: [active, expired, released]
+          description: Lock state - active if held and not expired, expired if past expiresAt, released if explicitly released
+      required: [lockId, documentId, holderUserId, expiresAt, state]
     QueueStatus:
       type: object
       properties:
@@ -439,6 +1209,351 @@ components:
                 type: integer
               p95LatencyMs:
                 type: number
+    DlqItem:
+      type: object
+      properties:
+        jobId:
+          type: string
+        queue:
+          type: string
+        reason:
+          type: string
+        attempts:
+          type: integer
+        payload:
+          type: object
+        createdAt:
+          type: string
+          format: date-time
+    IntakeSourceCreateRequest:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [upload, watched_storage]
+        uri:
+          type: string
+        credentialsRef:
+          type: string
+        pollingIntervalSeconds:
+          type: integer
+      required: [type, uri]
+    IntakeSourceUpdateRequest:
+      type: object
+      properties:
+        uri:
+          type: string
+        credentialsRef:
+          type: string
+        pollingIntervalSeconds:
+          type: integer
+        active:
+          type: boolean
+    IntakeSource:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+        uri:
+          type: string
+        pollingIntervalSeconds:
+          type: integer
+        active:
+          type: boolean
+    AuditEvent:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        actorId:
+          type: string
+        type:
+          type: string
+        fromState:
+          type: string
+        toState:
+          type: string
+        reason:
+          type: string
+        metadata:
+          type: object
+        createdAt:
+          type: string
+          format: date-time
+    ExportJob:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        documentId:
+          type: string
+          format: uuid
+        schemaVersion:
+          type: string
+        status:
+          type: string
+          enum: [pending, delivering, delivered, failed, dlq]
+        attempts:
+          type: integer
+        nextRetryAt:
+          type: string
+          format: date-time
+        lastError:
+          type: string
+        deliveredAt:
+          type: string
+          format: date-time
+    ExportPayload:
+      type: object
+      properties:
+        schemaVersion:
+          type: string
+        documentId:
+          type: string
+          format: uuid
+        status:
+          type: string
+        payload:
+          type: object
+        deliveredAt:
+          type: string
+          format: date-time
+        lastError:
+          type: string
+    ReviewQueueItem:
+      type: object
+      properties:
+        documentId:
+          type: string
+          format: uuid
+        type:
+          type: string
+        priority:
+          type: string
+        confidence:
+          type: number
+          format: float
+        lock:
+          $ref: '#/components/schemas/Lock'
+    ReviewPayload:
+      type: object
+      properties:
+        document:
+          $ref: '#/components/schemas/DocumentStatus'
+        extractedData:
+          type: object
+        supplementalData:
+          type: object
+        regions:
+          type: array
+          items:
+            type: object
+            properties:
+              fieldPath:
+                type: string
+              bbox:
+                type: array
+                items:
+                  type: number
+                minItems: 4
+                maxItems: 4
+              confidence:
+                type: number
+                format: float
+    ProcessingProfile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        strategy:
+          type: string
+          enum: [fast, accurate, balanced]
+        ocrPrimary:
+          type: string
+        ocrSecondary:
+          type: string
+        classificationTier:
+          type: string
+          enum: [traditional, layoutlm, llm]
+        enrichmentPolicies:
+          type: object
+        retry:
+          type: object
+        enabled:
+          type: boolean
+          description: Whether this profile is active and can be selected for new documents
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ProcessingProfileCreateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        strategy:
+          type: string
+        ocrPrimary:
+          type: string
+        ocrSecondary:
+          type: string
+        classificationTier:
+          type: string
+        enrichmentPolicies:
+          type: object
+        retry:
+          type: object
+      required: [name, strategy, ocrPrimary, ocrSecondary, classificationTier]
+    ProcessingProfileUpdateRequest:
+      type: object
+      properties:
+        strategy:
+          type: string
+        ocrPrimary:
+          type: string
+        ocrSecondary:
+          type: string
+        classificationTier:
+          type: string
+        enrichmentPolicies:
+          type: object
+        retry:
+          type: object
+    RuleVersion:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        documentType:
+          type: string
+        version:
+          type: string
+        schemaId:
+          type: string
+        rolloutPolicy:
+          type: string
+        rollbackPointer:
+          type: string
+    RuleDeploymentRequest:
+      type: object
+      properties:
+        action:
+          type: string
+          enum: [promote, rollback]
+        targetSlot:
+          type: string
+          enum: [live, canary]
+        rollbackPointer:
+          type: string
+      required: [action]
+    RuleVersionCreateRequest:
+      type: object
+      properties:
+        documentType:
+          type: string
+        version:
+          type: string
+        schemaId:
+          type: string
+        rolloutPolicy:
+          type: string
+      required: [documentType, version, schemaId]
+    WebhookSubscriptionCreateRequest:
+      type: object
+      properties:
+        eventTypes:
+          type: array
+          items:
+            type: string
+        endpoint:
+          type: string
+        secret:
+          type: string
+        retries:
+          type: integer
+        backoffSeconds:
+          type: integer
+      required: [eventTypes, endpoint]
+    WebhookSubscriptionUpdateRequest:
+      type: object
+      properties:
+        eventTypes:
+          type: array
+          items:
+            type: string
+        endpoint:
+          type: string
+        secret:
+          type: string
+        retries:
+          type: integer
+        backoffSeconds:
+          type: integer
+        disabled:
+          type: boolean
+    WebhookDelivery:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        subscriptionId:
+          type: string
+          format: uuid
+        eventType:
+          type: string
+        status:
+          type: string
+          enum: [pending, delivering, delivered, failed, dlq]
+        attempt:
+          type: integer
+        nextRetryAt:
+          type: string
+          format: date-time
+        lastError:
+          type: string
+        deliveredAt:
+          type: string
+          format: date-time
+    WebhookSubscription:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        eventTypes:
+          type: array
+          items:
+            type: string
+        endpoint:
+          type: string
+        secret:
+          type: string
+          description: HMAC secret for signature verification (write-only, not returned in GET)
+        retries:
+          type: integer
+        backoffSeconds:
+          type: integer
+        disabled:
+          type: boolean
+        lastFailureAt:
+          type: string
+          format: date-time
+          description: Timestamp of the most recent delivery failure
+        lastFailureReason:
+          type: string
+          description: Error message from the most recent delivery failure
     WebhookEvent:
       type: object
       properties:
@@ -450,4 +1565,19 @@ components:
         status:
           type: string
           enum: [pending, delivered, failed, retrying]
+    AuthLoginRequest:
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+      required: [username, password]
+    AuthTokens:
+      type: object
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
 

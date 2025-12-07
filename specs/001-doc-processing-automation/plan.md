@@ -7,18 +7,18 @@
 
 ## Summary
 
-Implement the six-stage async pipeline (intake → classify → OCR → extract → enrichment pre-validation → validate/review → enrichment post-validation → export) with BullMQ-managed queues, idempotent workers, and DLQs; deliver template-based extraction with partial-match fallback; embed active learning that logs validated corrections into MLflow and triggers Temporal retraining; and ship a keyboard-first validation UI (Mantine + Label Studio + react-hotkeys-hook) with Redis-backed document locking and webhook-driven status updates.
+Implement a four-group async pipeline (ingestion-worker: intake→classify→OCR; processing-worker: extract→enrich-pre→validate-review; enrichment-worker: enrich-post; export-worker: export) with BullMQ-managed queues, idempotent workers, and DLQs; deliver template-based extraction with partial-match fallback; embed active learning that logs validated corrections into PostgreSQL and triggers manual retraining when corrections exceed 1000; and ship a keyboard-first validation UI (Mantine + Label Studio + react-hotkeys-hook) with Redis-backed document locking and webhook-driven status updates.
 
 ## Technical Context
 
 **Language/Version**: TypeScript (strict) — Nx monorepo with NestJS backend, React 18 frontend  
-**Primary Dependencies**: Nx, NestJS (DDD modules, class-validator), Prisma, Mantine UI, @heartexlabs/label-studio, TanStack Query, BullMQ, Redis, OpenTelemetry, OpenCV, MLflow, Temporal, MinIO SDK, Keycloak adapters  
+**Primary Dependencies**: Nx, NestJS (DDD modules, class-validator), Prisma, Mantine UI, @heartexlabs/label-studio, TanStack Query, BullMQ, Redis, OpenTelemetry, OpenCV, MinIO SDK, Keycloak adapters  
 **Storage**: PostgreSQL (Prisma ORM as sole DAL), MinIO (S3-compatible originals + normalized artifacts), Redis for queues/cache/locks  
 **Testing**: Jest + supertest + testcontainers (backend); React Testing Library + Playwright (frontend); contract tests for webhooks; coverage gate ≥80%  
 **Target Platform**: Dockerized services deployed via Helm to Kubernetes; Linux runtime; OTel collectors configured cluster-wide  
 **Project Type**: Nx monorepo with shared types (`@my-org/shared-types`) consumed by backend, frontend, and workers  
 **Performance Goals**: 500 docs/day baseline (p95 end-to-end under 1 workday), queue processing p95 < 10s per stage for healthy items, webhook emission < 5s from state change, lock acquisition under 200ms  
-**Constraints**: DTO validation mandatory; enrichment allowed pre/post validation with lifecycle consistency; dual OCR (PaddleOCR primary, Azure DI secondary) with runtime switch; tiered classification (traditional OCR → LayoutLM → LLM for unstructured); active learning loop required for validated data; no proprietary preprocessing SDKs (OpenCV only)  
+**Constraints**: DTO validation mandatory; enrichment allowed pre/post validation with lifecycle consistency; dual OCR (PaddleOCR primary, Azure DI secondary) with runtime switch; tiered classification (traditional OCR → LayoutLM → LLM for unstructured); active learning loop required for validated data (v1: PostgreSQL logging, Phase 2: MLflow + Temporal retraining); no proprietary preprocessing SDKs (OpenCV only)  
 **Scale/Scope**: Enterprise IDP pipeline with evented integrations, schema-versioned templates/rules with rollback; v1 excludes redaction/BPM/mobile/end-user schema design
 
 ## Constitution Check
@@ -29,7 +29,7 @@ Implement the six-stage async pipeline (intake → classify → OCR → extract 
 - Type safety & DTOs: TypeScript strict, shared DTOs in `@my-org/shared-types` with `class-validator`; no untyped SDK shortcuts. **Status: PASS**
 - Frontend data & styling: TanStack Query only for server data; Mantine native props; react-hotkeys-hook for shortcuts. **Status: PASS**
 - AI/ML tiering: PaddleOCR primary, Azure DI secondary with runtime switch; LayoutLM for structured high-volume; LLM fallback for unstructured; active learning mandated. **Status: PASS**
-- Active learning pipeline: MLflow for params/metrics/artifacts; Temporal orchestrates retraining with staged/live slots, rollback/fallback. **Status: PASS**
+- Active learning pipeline: PostgreSQL-based correction logging with manual retraining trigger (>1000 corrections); Phase 2 adds MLflow for experiment tracking and Temporal for automated retraining workflows. **Status: PASS**
 - Enrichment lifecycle: Pre-validation enrichment mandatory; post-validation optional; lifecycle supports partial documents without contradiction. **Status: PASS**
 - Quality gates: Coverage ≥80%, backend integration + unit tests, frontend RTL + Playwright, DI mocks for third parties. **Status: PASS**
 - Observability/events: OTel tracing across pipeline, structured JSON logs, metrics, webhooks on all state changes with retry/alerts, contract tests. **Status: PASS**
@@ -58,15 +58,11 @@ apps/
 ├── api/                 # NestJS HTTP + queue producers
 ├── web/                 # React + Mantine + Label Studio validation UI
 ├── admin/               # Ops console (profiles, templates, rules, webhooks)
-└── workers/             # Nx targets bundling BullMQ consumers per stage
-    ├── intake/
-    ├── classify/
-    ├── ocr/
-    ├── extract/
-    ├── enrich-pre/
-    ├── validate-review/
-    ├── enrich-post/
-    └── export/
+└── workers/             # Nx targets bundling BullMQ consumers per group
+    ├── ingestion-worker/     # intake → classify → ocr
+    ├── processing-worker/    # extract → enrich-pre → validate-review
+    ├── enrichment-worker/    # enrich-post
+    └── export-worker/        # export
 
 packages/
 ├── shared-types/        # DTOs/schemas with class-validator
@@ -74,7 +70,7 @@ packages/
 ├── storage/             # MinIO + canonical artifact helpers
 ├── observability/       # OTel, structured logging, metrics
 ├── templates/           # Template schema, versioning, matcher utilities
-├── ml/                  # OCR model orchestration, MLflow + Temporal hooks
+├── ml/                  # OCR model orchestration, correction logging (Phase 2: MLflow + Temporal hooks)
 └── validation-rules/    # Business rules, rule engine wiring (schema-versioned)
 
 tests/
@@ -83,7 +79,7 @@ tests/
 └── e2e/                 # Playwright for validation UI flows
 ```
 
-**Structure Decision**: Nx workspace with `apps` for API/UI/workers and `packages` for shared libs (types, queue, storage, templates, observability, ML, validation rules). Tests split by contract/integration/e2e to align with coverage gate and pipeline stages.
+**Structure Decision**: Nx workspace with `apps` for API/UI/workers and `packages` for shared libs (types, queue, storage, templates, observability, ML, validation rules). Tests split by contract/integration/e2e to align with coverage gate and pipeline stages. Workers consolidated from 8 separate services to 4 groups for operational efficiency at current scale (500 docs/day).
 
 ## Complexity Tracking
 
