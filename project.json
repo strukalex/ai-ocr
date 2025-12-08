@@ -1,0 +1,15 @@
+{
+  "$schema": "./node_modules/nx/schemas/project-schema.json",
+  "name": "ai-ocr",
+  "root": ".",
+  "projectType": "library",
+  "targets": {
+    "test": {
+      "executor": "nx:noop",
+      "options": {
+        "outputPath": "dist/.noop-test"
+      }
+    }
+  },
+  "tags": []
+}

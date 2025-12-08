@@ -8,12 +8,269 @@ datasource db {
 }
 
 model Document {
+  id                 String      @id @default(uuid())
+  sourceChannel      String
+  originalUri        String
+  canonicalUri       String?
+  checksum           String      @db.VarChar(128)
+  status             String      @db.VarChar(32)
+  stateReason        String?     @db.Text
+  classificationType String?
+  classificationConf Float?
+  processingProfileId String?
+  templateVersionId   String?
+  extractionRuleVersionId String?
+  validationRuleVersionId String?
+  parentDocumentId    String?
+  rootDocumentId      String?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  templateVersion   TemplateVersion? @relation(fields: [templateVersionId], references: [id])
+  processingProfile ProcessingProfile? @relation(fields: [processingProfileId], references: [id])
+  extractionRuleVersion ExtractionRuleVersion? @relation(fields: [extractionRuleVersionId], references: [id])
+  validationRuleVersion ValidationRuleVersion? @relation(fields: [validationRuleVersionId], references: [id])
+  parentDocument    Document? @relation("ParentChild", fields: [parentDocumentId], references: [id])
+  childDocuments    Document[] @relation("ParentChild")
+  pageArtifacts     PageArtifact[]
+  locks             Lock[]
+  exportJobs        ExportJob[]
+  auditEvents       AuditEvent[]
+  correctionLogs    CorrectionLog[]
+  webhooks          WebhookDelivery[]
+  intakeRequests    IntakeRequest[]
+  enrichmentJobs    EnrichmentJob[]
+  validationSessions ValidationSession[]
+}
+
+model PageArtifact {
   id           String   @id @default(uuid())
-  originalUri  String
-  checksum     String   @db.VarChar(128)
-  status       String   @db.VarChar(32)
-  stateReason  String?  @db.Text
+  documentId   String
+  pageNumber   Int
+  imageUri     String?
+  ocrPayload   Json?
+  layoutBlocks Json?
+  checksum     String?
   createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+
+  document Document @relation(fields: [documentId], references: [id])
+}
+
+model Template {
+  id        String   @id @default(uuid())
+  name      String
+  documentType String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  versions  TemplateVersion[]
+}
+
+model TemplateVersion {
+  id           String   @id @default(uuid())
+  templateId   String
+  version      String
+  status       String   @db.VarChar(16)
+  coordinates  Json?
+  matchPolicy  Json?
+  tolerances   Json?
+  fallbackExtractionEnabled Boolean @default(false)
+  outputSchemaVersion String?
+  createdBy    String?
+  deployedAt   DateTime?
+  createdAt    DateTime @default(now())
+
+  template Template @relation(fields: [templateId], references: [id])
+  fields   TemplateField[]
+  documents Document[]
+}
+
+model TemplateField {
+  id             String   @id @default(uuid())
+  templateVersionId String
+  fieldId        String
+  page           Int
+  bbox           Json
+  fieldType      String
+  mappingPath    String
+  tableConfig    Json?
+  categorizationConfig Json?
+  confidenceThreshold Float?
+
+  templateVersion TemplateVersion @relation(fields: [templateVersionId], references: [id])
+}
+
+model ProcessingProfile {
+  id        String   @id @default(uuid())
+  name      String
+  strategy  String
+  ocrPrimary String?
+  ocrSecondary String?
+  classificationTier String?
+  enrichmentPolicies Json?
+  retry      Json?
+  enabled    Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  documents  Document[]
+}
+
+model ExtractionRuleVersion {
+  id        String   @id @default(uuid())
+  documentType String
+  version   String
+  schemaId  String
+  definition Json
+  rolloutPolicy String?
+  rollbackPointer String?
+  documents Document[]
+}
+
+model ValidationRuleVersion {
+  id        String   @id @default(uuid())
+  documentType String
+  version   String
+  schemaId  String
+  definition Json
+  rolloutPolicy String?
+  rollbackPointer String?
+  documents Document[]
+}
+
+model EnrichmentJob {
+  id         String   @id @default(uuid())
+  documentId String
+  stage      String   @db.VarChar(16)
+  payload    Json?
+  status     String   @db.VarChar(16)
+  attempts   Int      @default(0)
+  nextRetryAt DateTime?
+  dlqReason  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  document Document @relation(fields: [documentId], references: [id])
+}
+
+model ValidationSession {
+  id         String   @id @default(uuid())
+  documentId String
+  lockId     String
+  openedBy   String
+  openedAt   DateTime @default(now())
+  submittedAt DateTime?
+  result     String?
+  createdAt  DateTime @default(now())
+
+  document Document @relation(fields: [documentId], references: [id])
+}
+
+model Lock {
+  id           String   @id @default(uuid())
+  documentId   String
+  holderUserId String
+  acquiredAt   DateTime @default(now())
+  ttl          Int
+  expiresAt    DateTime
+  state        String   @db.VarChar(16)
+
+  document Document @relation(fields: [documentId], references: [id])
+}
+
+model ExportJob {
+  id            String   @id @default(uuid())
+  documentId    String
+  schemaVersion String?
+  status        String   @db.VarChar(16)
+  attempts      Int      @default(0)
+  nextRetryAt   DateTime?
+  lastError     String?
+  deliveredAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  document Document @relation(fields: [documentId], references: [id])
+}
+
+model WebhookSubscription {
+  id            String   @id @default(uuid())
+  eventTypes    String
+  endpoint      String
+  secret        String?
+  retries       Int      @default(3)
+  backoffSeconds Int     @default(5)
+  disabled      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  deliveries    WebhookDelivery[]
+}
+
+model WebhookDelivery {
+  id              String   @id @default(uuid())
+  subscriptionId  String
+  documentId      String?
+  eventType       String
+  status          String   @db.VarChar(16)
+  attempt         Int      @default(0)
+  nextRetryAt     DateTime?
+  lastError       String?
+  deliveredAt     DateTime?
+  payload         Json?
+  createdAt       DateTime @default(now())
+
+  subscription WebhookSubscription @relation(fields: [subscriptionId], references: [id])
+  document     Document? @relation(fields: [documentId], references: [id])
+}
+
+model IntakeSource {
+  id          String   @id @default(uuid())
+  type        String
+  uri         String
+  credentialsRef String?
+  pollingIntervalSeconds Int?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  requests    IntakeRequest[]
+}
+
+model IntakeRequest {
+  id            String   @id @default(uuid())
+  documentId    String
+  intakeSourceId String?
+  idempotencyKey String?
+  receivedAt    DateTime @default(now())
+  status        String   @db.VarChar(16)
+
+  document Document @relation(fields: [documentId], references: [id])
+  intakeSource IntakeSource? @relation(fields: [intakeSourceId], references: [id])
+}
+
+model AuditEvent {
+  id          String   @id @default(uuid())
+  documentId  String
+  actorId     String?
+  eventType   String
+  fromState   String?
+  toState     String?
+  reason      String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  document Document @relation(fields: [documentId], references: [id])
+}
+
+model CorrectionLog {
+  id             String   @id @default(uuid())
+  documentId     String
+  documentType   String?
+  fieldPath      String
+  previousValue  String?
+  correctedValue String?
+  confidence     Float?
+  reasonCode     String?
+  validatorId    String?
+  createdAt      DateTime @default(now())
+
+  document Document @relation(fields: [documentId], references: [id])
 }
 

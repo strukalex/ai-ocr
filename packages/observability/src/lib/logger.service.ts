@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
+import { context, trace } from '@opentelemetry/api';
 
 interface LogFields {
   traceId?: string;
   spanId?: string;
+  service?: string;
   [key: string]: unknown;
 }
 
@@ -25,10 +27,15 @@ export class LoggerService {
   }
 
   private write(level: string, message: string, fields: LogFields): void {
+    const span = trace.getSpan(context.active());
+    const spanContext = span?.spanContext();
     const payload = {
       level,
       message,
       timestamp: new Date().toISOString(),
+      service: fields.service ?? process.env['OTEL_SERVICE_NAME'] ?? 'unknown',
+      traceId: fields.traceId ?? spanContext?.traceId,
+      spanId: fields.spanId ?? spanContext?.spanId,
       ...fields,
     };
     // Ensure predictable JSON logs for tracing backends

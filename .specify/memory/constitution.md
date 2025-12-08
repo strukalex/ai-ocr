@@ -81,6 +81,11 @@ formal amendment.
   validation. Initial enrichment must run even on partial documents to capture
   available signals; the lifecycle and state machine must permit enrichment
   before validation without contradiction.
+-
+- TLS Policy: TLS 1.2+ is mandatory for all deployed environments (staging,
+  production, shared test). Local developer setups may run without TLS only on
+  loopback or behind a trusted local reverse proxy/terminator; production and
+  shared environments must reject plain HTTP.
 
 ## Delivery Workflow & Quality Gates
 

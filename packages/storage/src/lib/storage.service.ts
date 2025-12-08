@@ -9,17 +9,25 @@ export interface StorageModuleOptions {
   accessKey?: string;
   secretKey?: string;
   defaultBucket?: string;
+  /** Server-side encryption algorithm (defaults to AES256) */
+  sseAlgorithm?: 'AES256' | 'aws:kms';
+  /** Enforce SSE on all uploads (default: true) */
+  enforceSse?: boolean;
 }
 
 @Injectable()
 export class StorageService {
   private client: Client;
   private defaultBucket: string;
+  private sseAlgorithm: 'AES256' | 'aws:kms';
+  private enforceSse: boolean;
 
   constructor(
     @Inject(STORAGE_OPTIONS_TOKEN) private readonly options: StorageModuleOptions,
   ) {
     this.defaultBucket = options.defaultBucket ?? 'documents';
+    this.sseAlgorithm = options.sseAlgorithm ?? 'AES256';
+    this.enforceSse = options.enforceSse ?? true;
     this.client = new Client({
       endPoint: options.endPoint,
       port: options.port ?? 9000,
@@ -43,7 +51,15 @@ export class StorageService {
     bucket = this.defaultBucket,
   ): Promise<void> {
     await this.ensureBucket(bucket);
-    await this.client.putObject(bucket, objectName, content, content.length, metadata);
+    const finalMetadata =
+      this.enforceSse || this.sseAlgorithm
+        ? {
+            ...metadata,
+            'x-amz-server-side-encryption': this.sseAlgorithm,
+          }
+        : metadata;
+
+    await this.client.putObject(bucket, objectName, content, content.length, finalMetadata);
   }
 
   async downloadObject(

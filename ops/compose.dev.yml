@@ -34,6 +34,7 @@ services:
       - "9001:9001"
     volumes:
       - minio_data:/data
+    # For production: enable server-side encryption (SSE-S3/SSE-KMS) and store keys in a KMS.
 
   keycloak:
     image: quay.io/keycloak/keycloak:24.0

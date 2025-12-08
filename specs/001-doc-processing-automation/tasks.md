@@ -93,6 +93,11 @@
   - **Dependencies**: `@my-org/queue`, `@my-org/storage`, `@my-org/database`
   - **Done**: Integration test from T010 passes the "DB Status Update" assertion.
 
+- [ ] T089 [ARCH] Idempotency Keys & Backoff Profiles
+  - **Files**: `packages/queue/src/lib/queue.service.ts`, `packages/queue/src/lib/retry.config.ts`, `apps/workers/*/src/app/processors/*.ts`
+  - **Dependencies**: `@my-org/queue`
+  - **Done**: All processors accept idempotency keys and use standardized exponential backoff/retry profiles; integration tests cover retry and idempotent behavior.
+
 - [ ] T069 [US1] Implement heuristic document splitter
   - **Files**: `apps/workers/ingestion-worker/src/app/processors/split.processor.ts`
   - **Dependencies**: `pdf-lib` (or ghostscript), `@my-org/shared-types`
@@ -123,6 +128,11 @@
   - **Files**: `apps/api/src/app/auth/auth.controller.ts`, `packages/shared-types/src/lib/auth/worker-auth.interface.ts`, `apps/workers/*/src/app/auth/*`
   - **Dependencies**: `@my-org/shared-types`, `keycloak-connect`, `@my-org/database`
   - **Done**: Login endpoint supports OIDC/bearer/password auth per OpenAPI; workers and webhooks use consistent service-to-service auth patterns matching FR-018 and constitution RBAC requirements.
+
+- [ ] T090 [SEC] Enforce At-Rest Encryption for Storage/DB
+  - **Files**: `packages/storage/src/lib/storage.service.ts`, `apps/api/src/config/security.config.ts`, `docs/ops/security.md`
+  - **Dependencies**: `@my-org/storage`
+  - **Done**: MinIO uploads use SSE (AES-256) by default; DB encryption/TDE requirements documented and enabled per environment; tests/ops checklist verify encryption flags.
 
 ## Phase 3: Intelligent Processing Core
 **Goal**: Extraction, classification, and validation logic.
@@ -354,6 +364,11 @@
   - **Dependencies**: `@my-org/templates`, `@my-org/validation-rules`
   - **Done**: Admin can view versions, diff, and roll back; e2e test covers rollback flow.
 
+- [ ] T086 [US6] Measure & Enforce Template Publish Latency
+  - **Files**: `apps/admin/src/app/features/templates/publish-flow.tsx`, `packages/templates/src/lib/versioning.service.ts`, `tests/perf/template-publish.bench.ts`
+  - **Dependencies**: `@my-org/templates`
+  - **Done**: Publish flow measured end-to-end with p95 < 2 minutes; alerts/logs fire when SLA breached.
+
 - [ ] T082 [US2] Implement Webhook Subscription Management API
   - **Files**: `apps/api/src/app/webhook-subscriptions/webhook-subscriptions.controller.ts`, `apps/api/src/app/webhook-subscriptions/webhook-subscriptions.service.ts`, `apps/api/src/app/webhook-deliveries/webhook-deliveries.controller.ts`
   - **Dependencies**: `@my-org/shared-types`, `@my-org/database`, `@my-org/queue`
@@ -377,6 +392,16 @@
   - **Dependencies**: `packages/templates/src/lib/matcher.service.ts`
   - **Done**: If shift > max_shift_px or confidence < min_confidence, fallback to flexible extraction and flag Human Review.
   - **Notes**: Surface matchPolicy breach as reason; include TemplateVersion id and fallback path in audit/log.
+
+- [ ] T084 [US2] Learning Toggle API & Schema
+  - **Files**: `packages/database/prisma/schema.prisma`, `apps/api/src/app/learning/learning.controller.ts`
+  - **Dependencies**: `@my-org/database`, `@my-org/shared-types`
+  - **Done**: Operators can enable/disable learning per doc type/profile with staged rollout flag and rollback pointer; integration test covers toggle/rollback.
+
+- [ ] T085 [US2] Learning Toggle Worker Enforcement
+  - **Files**: `apps/workers/processing-worker/src/app/processors/review.processor.ts`, `packages/ml/src/lib/correction-log.service.ts`
+  - **Dependencies**: `@my-org/ml`, `@my-org/database`
+  - **Done**: Corrections are persisted but only applied when learning is enabled; respects staged rollout flag and emits audit events.
 
 - [ ] T076 [US2] Admin View for Unknown-Type Backlog
   - **Files**: `apps/admin/src/app/features/unknown-types/*`
@@ -425,6 +450,16 @@
   - **Dependencies**: None
   - **Instructions**: Document next-cycle plan to re-enable MLflow/Temporal active learning with staged promotion gates; include prerequisites, rollback plan, and entry criteria; link in release checklist.
   - **Done**: Roadmap doc exists with dated action items; referenced in release checklist; no retraining triggered this cycle.
+
+- [ ] T087 [OBS] Centralized Log Sink & 30d Retention
+  - **Files**: `helm/values.yaml`, `docs/ops/logging.md`
+  - **Dependencies**: `@my-org/observability`
+  - **Done**: Logs ship to centralized sink with ≥30-day retention; smoke test verifies ingestion.
+
+- [ ] T088 [SEC] OWASP Hardening & Tests
+  - **Files**: `apps/api/src/main.ts`, `apps/api/src/app/auth/*`, `tests/security/owasp.spec.ts`
+  - **Dependencies**: `@my-org/shared-types`
+  - **Done**: CSRF/XSS/SQLi protections and security headers enforced; automated tests verify guardrails.
 
 ## Deferred (Post-Cycle) - Active Learning
 **Note**: Active learning (MLflow + Temporal) is deferred out of this cycle per Constitution Amendment 2025-12-07. Only correction logging is in scope now. Reintroduce in the next planning cycle with fresh tasks.
