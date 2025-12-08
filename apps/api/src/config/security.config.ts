@@ -13,7 +13,7 @@ export const securityConfig: SecurityConfig = {
   requireTls: (process.env['REQUIRE_TLS'] ?? 'true').toLowerCase() !== 'false',
   trustProxy: (process.env['TRUST_PROXY'] ?? 'true').toLowerCase() === 'true',
   atRestEncryption: 'AES-256-GCM',
-  sessionTimeoutMinutes: Number(process.env['SESSION_TIMEOUT_MINUTES'] ?? 30),
+  sessionTimeoutMinutes: Number(process.env['SESSION_IDLE_MINUTES'] ?? 30),
   requireAtRestEncryption: (process.env['REQUIRE_AT_REST_ENCRYPTION'] ?? 'true').toLowerCase() !== 'false',
   storageSseAlgorithm: 'AES256',
 };
