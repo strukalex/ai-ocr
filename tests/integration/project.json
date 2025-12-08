@@ -1,0 +1,18 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "integration-tests",
+  "projectType": "application",
+  "root": "tests/integration",
+  "sourceRoot": "tests/integration/src",
+  "targets": {
+    "test": {
+      "executor": "@nx/jest:jest",
+      "outputs": ["{workspaceRoot}/coverage/tests/integration"],
+      "options": {
+        "jestConfig": "tests/integration/jest.config.ts",
+        "passWithNoTests": false
+      }
+    }
+  },
+  "tags": []
+}

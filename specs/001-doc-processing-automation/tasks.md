@@ -64,11 +64,11 @@
 ## Phase 2: Ingestion & Storage Pipeline (Revised for TDD)
 **Goal**: Reliable document upload and normalization defined by tests.
 
-- [ ] T009 [US1] Create `apps/api` NestJS application
+- [X] T009 [US1] Create `apps/api` NestJS application
   - **Files**: `apps/api/src/main.ts`, `apps/api/project.json`
   - **Done**: `nx serve api` starts on port 3000.
 
-- [ ] T010 [US1] **Create Integration Test for Ingestion Pipeline**
+- [X] T010 [US1] **Create Integration Test for Ingestion Pipeline**
   - **Files**: `tests/integration/ingestion.spec.ts`
   - **Dependencies**: `@my-org/shared-types`
   - **Done**: Test is created but fails (red state) because endpoint does not exist.
@@ -78,12 +78,12 @@
   - **Dependencies**: `@my-org/storage`, `@my-org/queue`, `chokidar` (or equivalent FS watcher/poller)
   - **Done**: Dropping a file into a configured local/S3/SMB path enqueues the same job as `POST /documents`, updates status to "Uploaded", and deduplicates by checksum to satisfy FR-001.
 
-- [ ] T077 [US1] Implement IntakeSource CRUD API & Service
+- [X] T077 [US1] Implement IntakeSource CRUD API & Service
   - **Files**: `apps/api/src/app/intake-sources/intake-sources.controller.ts`, `apps/api/src/app/intake-sources/intake-sources.service.ts`, `packages/database/prisma/schema.prisma` (IntakeSource entity)
   - **Dependencies**: `@my-org/shared-types`, `@my-org/database`, `@my-org/storage`
   - **Done**: REST endpoints for managing watched storage locations (local/S3/SMB paths) with validation and persistence; enables multi-channel intake configuration per FR-001.
 
-- [ ] T011 [US1] Implement `POST /documents` Endpoint
+- [X] T011 [US1] Implement `POST /documents` Endpoint
   - **Files**: `apps/api/src/app/documents/documents.controller.ts`
   - **Dependencies**: `@my-org/shared-types`, `@my-org/queue`, `@my-org/storage`, `@my-org/database`
   - **Done**: Integration test from T010 passes the "Upload" step (returns 201).

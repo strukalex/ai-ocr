@@ -13,9 +13,9 @@ interface JwtClaims extends jwt.JwtPayload {
 @Injectable()
 export class AuthService {
   private jwks: JwksClient | null =
-    process.env.JWKS_URL && process.env.JWKS_URL.length > 0
+    process.env['JWKS_URL'] && process.env['JWKS_URL'].length > 0
       ? jwksClient({
-          jwksUri: process.env.JWKS_URL,
+          jwksUri: process.env['JWKS_URL'],
           cache: true,
           cacheMaxEntries: 5,
           cacheMaxAge: 10 * 60 * 1000,
@@ -32,14 +32,14 @@ export class AuthService {
     const decoded = await this.verifyJwt(token);
     const roles =
       decoded.realm_access?.roles ||
-      decoded.resource_access?.[process.env.KEYCLOAK_CLIENT_ID ?? 'ai-ocr']?.roles ||
+      decoded.resource_access?.[process.env['KEYCLOAK_CLIENT_ID'] ?? 'ai-ocr']?.roles ||
       [];
 
     const user: UserContext = {
       userId: decoded.sub ?? decoded.preferred_username ?? 'unknown',
       roles: (roles ?? []).filter(Boolean) as Role[],
-      email: decoded.email,
-      name: decoded.name,
+      email: decoded['email'],
+      name: decoded['name'],
     };
 
     await this.audit.log({
@@ -53,7 +53,7 @@ export class AuthService {
   }
 
   private async verifyJwt(token: string): Promise<JwtClaims> {
-    const publicKey = process.env.KEYCLOAK_PUBLIC_KEY;
+    const publicKey = process.env['KEYCLOAK_PUBLIC_KEY'];
     if (publicKey) {
       return jwt.verify(token, publicKey, { algorithms: ['RS256'] }) as JwtClaims;
     }

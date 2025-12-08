@@ -3,3 +3,8 @@
 /coverage
 /.nx/cache
 /.nx/workspace-data
+node_modules
+build
+package-lock.json
+yarn.lock
+pnpm-lock.yaml

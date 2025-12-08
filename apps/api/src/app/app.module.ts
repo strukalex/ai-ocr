@@ -8,9 +8,11 @@ import { AUDIT_SINKS } from '@my-org/observability';
 import { PrismaAuditSink } from './audit/prisma-audit.sink';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { RequestTelemetryInterceptor } from './telemetry/request-telemetry.interceptor';
+import { DocumentsModule } from './documents/documents.module';
+import { IntakeSourcesModule } from './intake-sources/intake-sources.module';
 
 @Module({
-  imports: [SecurityModule, AuthModule, DatabaseModule],
+  imports: [SecurityModule, AuthModule, DatabaseModule, DocumentsModule, IntakeSourcesModule],
   controllers: [AppController],
   providers: [
     AppService,
