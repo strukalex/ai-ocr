@@ -30,7 +30,8 @@ export class JwtAuthGuard implements CanActivate {
       this.audit.log({
         action: 'auth.verify',
         outcome: 'failure',
-        details: { path: request.url },
+        resource: request.url,
+        metadata: { path: request.url },
       });
       throw err instanceof UnauthorizedException ? err : new UnauthorizedException();
     }

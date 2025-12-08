@@ -1,28 +1,44 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { LoggerService } from './logger.service';
 
-export interface AuditEvent {
+export interface AuditRecord {
   action: string;
-  userId?: string;
+  actorId?: string;
   roles?: string[];
+  resource?: string;
   outcome: 'success' | 'failure';
   traceId?: string;
-  details?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  documentId?: string;
 }
+
+export interface AuditSink {
+  persist(event: AuditRecord): Promise<void>;
+}
+
+export const AUDIT_SINKS = 'AUDIT_SINKS';
 
 @Injectable()
 export class AuditLogger {
-  constructor(private readonly logger: LoggerService) {}
+  constructor(
+    private readonly logger: LoggerService,
+    @Optional() @Inject(AUDIT_SINKS) private readonly sinks?: AuditSink[],
+  ) {}
 
-  log(event: AuditEvent): void {
+  async log(event: AuditRecord): Promise<void> {
     this.logger.info('audit', {
       action: event.action,
-      userId: event.userId,
+      actorId: event.actorId,
       roles: event.roles,
+      resource: event.resource,
       outcome: event.outcome,
       traceId: event.traceId,
-      details: event.details,
+      documentId: event.documentId,
+      metadata: event.metadata,
     });
+
+    if (!this.sinks || this.sinks.length === 0) return;
+    await Promise.allSettled(this.sinks.map((sink) => sink.persist(event)));
   }
 }
 

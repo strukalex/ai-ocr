@@ -246,17 +246,17 @@ model IntakeRequest {
 }
 
 model AuditEvent {
-  id          String   @id @default(uuid())
-  documentId  String
-  actorId     String?
-  eventType   String
-  fromState   String?
-  toState     String?
-  reason      String?
-  metadata    Json?
-  createdAt   DateTime @default(now())
+  id         String   @id @default(uuid())
+  documentId String?
+  actorId    String?
+  action     String
+  resource   String?
+  outcome    String?
+  traceId    String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
 
-  document Document @relation(fields: [documentId], references: [id])
+  document Document? @relation(fields: [documentId], references: [id])
 }
 
 model CorrectionLog {

@@ -14,10 +14,11 @@ export class AuditAuthGuard implements CanActivate {
     const user = (request.user ?? { userId: 'anonymous', roles: [] }) as UserContext;
     this.auditLogger.log({
       action: 'auth',
-      userId: user.userId,
+      actorId: user.userId,
       roles: user.roles,
       outcome: allowed ? 'success' : 'failure',
-      details: {
+      resource: request.url,
+      metadata: {
         path: request.url,
         method: request.method,
       },

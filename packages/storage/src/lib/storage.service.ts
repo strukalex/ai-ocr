@@ -52,7 +52,7 @@ export class StorageService {
   ): Promise<void> {
     await this.ensureBucket(bucket);
     const finalMetadata =
-      this.enforceSse || this.sseAlgorithm
+      this.enforceSse && this.sseAlgorithm
         ? {
             ...metadata,
             'x-amz-server-side-encryption': this.sseAlgorithm,

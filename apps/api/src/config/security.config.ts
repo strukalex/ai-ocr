@@ -1,5 +1,7 @@
 export interface SecurityConfig {
   tlsMinVersion: 'TLSv1.2' | 'TLSv1.3';
+  requireTls: boolean;
+  trustProxy: boolean;
   atRestEncryption: 'AES-256-GCM';
   sessionTimeoutMinutes: number;
   requireAtRestEncryption: boolean;
@@ -8,9 +10,11 @@ export interface SecurityConfig {
 
 export const securityConfig: SecurityConfig = {
   tlsMinVersion: 'TLSv1.2',
+  requireTls: (process.env['REQUIRE_TLS'] ?? 'true').toLowerCase() !== 'false',
+  trustProxy: (process.env['TRUST_PROXY'] ?? 'true').toLowerCase() === 'true',
   atRestEncryption: 'AES-256-GCM',
-  sessionTimeoutMinutes: 30,
-  requireAtRestEncryption: true,
+  sessionTimeoutMinutes: Number(process.env['SESSION_TIMEOUT_MINUTES'] ?? 30),
+  requireAtRestEncryption: (process.env['REQUIRE_AT_REST_ENCRYPTION'] ?? 'true').toLowerCase() !== 'false',
   storageSseAlgorithm: 'AES256',
 };
 

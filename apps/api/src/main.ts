@@ -5,6 +5,7 @@
 
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app/app.module';
 import { SecurityConfigService } from './app/security/security.service';
 import { NextFunction, Request, Response } from 'express';
@@ -12,6 +13,7 @@ import { initTelemetry, shutdownTelemetry } from '@my-org/observability';
 import * as fs from 'fs';
 import { loadTlsConfig } from './config/tls.config';
 import { createSessionTimeoutMiddleware } from './app/security/session.middleware';
+import { createHttpsEnforcementMiddleware } from './app/security/https.middleware';
 
 async function bootstrap() {
   initTelemetry(process.env['OTEL_SERVICE_NAME'] ?? 'ai-ocr-api');
@@ -20,19 +22,29 @@ async function bootstrap() {
   const httpsOptions =
     certFile && keyFile && fs.existsSync(certFile) && fs.existsSync(keyFile)
       ? {
-          httpsOptions: {
-            cert: fs.readFileSync(certFile),
-            key: fs.readFileSync(keyFile),
-          },
+          cert: fs.readFileSync(certFile),
+          key: fs.readFileSync(keyFile),
         }
       : undefined;
 
-  const app = await NestFactory.create(AppModule, httpsOptions);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    httpsOptions,
+  });
   const globalPrefix = 'api';
   app.setGlobalPrefix(globalPrefix);
   const securityConfig = app.get(SecurityConfigService);
+  if (securityConfig.config.trustProxy) {
+    app.set('trust proxy', 1);
+  }
+
+  app.use(
+    createHttpsEnforcementMiddleware({
+      requireTls: securityConfig.config.requireTls,
+      trustProxy: securityConfig.config.trustProxy,
+    }),
+  );
+
   app.use((req: Request, res: Response, next: NextFunction) => {
-    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     res.setHeader(
       'X-Session-Timeout-Minutes',
       securityConfig.config.sessionTimeoutMinutes.toString(),
@@ -40,7 +52,7 @@ async function bootstrap() {
     next();
   });
   const port = Number(process.env.PORT) || 3000;
-  const sessionIdleMinutes = Number(process.env.SESSION_IDLE_MINUTES ?? 30);
+  const sessionIdleMinutes = securityConfig.config.sessionTimeoutMinutes;
   app.use(createSessionTimeoutMiddleware(sessionIdleMinutes));
 
   await app.listen(port);

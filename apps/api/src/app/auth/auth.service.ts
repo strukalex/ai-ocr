@@ -44,7 +44,7 @@ export class AuthService {
 
     this.audit.log({
       action: 'auth.verify',
-      userId: user.userId,
+      actorId: user.userId,
       roles: user.roles,
       outcome: 'success',
     });
