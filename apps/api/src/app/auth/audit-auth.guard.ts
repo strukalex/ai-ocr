@@ -12,7 +12,7 @@ export class AuditAuthGuard implements CanActivate {
     const allowed = await Promise.resolve(this.delegate.canActivate(context));
     const request = context.switchToHttp().getRequest();
     const user = (request.user ?? { userId: 'anonymous', roles: [] }) as UserContext;
-    this.auditLogger.log({
+    await this.auditLogger.log({
       action: 'auth',
       actorId: user.userId,
       roles: user.roles,

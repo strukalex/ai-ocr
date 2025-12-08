@@ -65,4 +65,8 @@ async function bootstrap() {
   });
 }
 
-bootstrap();
+bootstrap().catch((err) => {
+  Logger.error('Failed to bootstrap application', err);
+  void shutdownTelemetry();
+  process.exit(1);
+});

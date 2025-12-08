@@ -27,7 +27,7 @@ export class JwtAuthGuard implements CanActivate {
       request.user = user;
       return true;
     } catch (err) {
-      this.audit.log({
+      await this.audit.log({
         action: 'auth.verify',
         outcome: 'failure',
         resource: request.url,

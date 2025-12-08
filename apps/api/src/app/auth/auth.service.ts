@@ -42,7 +42,7 @@ export class AuthService {
       name: decoded.name,
     };
 
-    this.audit.log({
+    await this.audit.log({
       action: 'auth.verify',
       actorId: user.userId,
       roles: user.roles,
