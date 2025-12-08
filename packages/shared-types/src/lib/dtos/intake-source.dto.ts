@@ -15,7 +15,10 @@ export class IntakeSourceCreateRequestDto {
   @IsEnum(SourceChannel)
   type!: SourceChannel;
 
-  @IsUrl()
+  @IsUrl({
+    protocols: ['http', 'https', 's3', 'smb', 'file'],
+    require_tld: false,
+  })
   uri!: string;
 
   @IsOptional()
@@ -36,7 +39,10 @@ export class IntakeSourceUpdateRequestDto {
   type?: SourceChannel;
 
   @IsOptional()
-  @IsUrl()
+  @IsUrl({
+    protocols: ['http', 'https', 's3', 'smb', 'file'],
+    require_tld: false,
+  })
   uri?: string;
 
   @IsOptional()

@@ -93,6 +93,12 @@
   - **Dependencies**: `@my-org/queue`, `@my-org/storage`, `@my-org/database`
   - **Done**: Integration test from T010 passes the "DB Status Update" assertion.
 
+- [ ] T097 [US1][OBS] Preserve Originals & Canonical Artifacts with Checksums
+  - **Files**: `apps/workers/ingestion-worker/src/app/processors/intake.processor.ts`, `apps/workers/ingestion-worker/src/app/services/normalization.service.ts`, `packages/storage/src/lib/storage.service.ts`, `packages/observability/src/lib/audit-logger.ts`, `tests/integration/ingestion.spec.ts`
+  - **Dependencies**: `@my-org/storage`, `@my-org/observability`, `@my-org/shared-types`
+  - **Instructions**: Persist the uploaded source file immutably with checksum (e.g., SHA-256) and object-lock/write-once semantics where supported; generate canonical PDF/A-2b separately without overwriting the original; emit audit linking original + canonical artifact ids, checksums, and locations; enforce checksum dedupe before enqueue; validate both artifacts are accessible for downstream steps.
+  - **Done**: Integration test uploads a JPG → original stored with checksum, canonical PDF/A created under a different key, audit log records both ids/checksums, and duplicate upload is deduped by checksum.
+
 - [ ] T089 [ARCH] Idempotency Keys & Backoff Profiles
   - **Files**: `packages/queue/src/lib/queue.service.ts`, `packages/queue/src/lib/retry.config.ts`, `apps/workers/*/src/app/processors/*.ts`
   - **Dependencies**: `@my-org/queue`
@@ -176,6 +182,10 @@
   - **Files**: `apps/workers/processing-worker/src/app/processors/extract.processor.ts`
   - **Dependencies**: `@my-org/shared-types`, `apps/workers/processing-worker/src/app/ocr/*`, `@my-org/database`
   - **Done**: Processor calls correct provider based on config/flag and saves raw text to DB.
+- [ ] T094 [US1] Implement canonical normalization service for extracted values
+  - **Files**: `apps/workers/processing-worker/src/app/services/normalization.service.ts`, `apps/workers/processing-worker/src/app/processors/extract.processor.ts`, `apps/workers/processing-worker/src/app/processors/enrich-pre.processor.ts`
+  - **Dependencies**: `@my-org/shared-types`, `@my-org/database`
+  - **Done**: Dates normalized to ISO, currencies to USD equivalents, addresses standardized, and totals/taxes reconciled before validation/export; unit tests cover transformations and processors persist normalized values.
 
 - [ ] T062 [P] [US6] Implement Template Matching Engine
   - **Files**: `packages/templates/src/lib/matcher.service.ts`
@@ -439,6 +449,10 @@
 - [ ] T031 [US1] Verify End-to-End Flow
   - **Files**: `tests/e2e/full-pipeline.spec.ts`
   - **Done**: Upload -> Process -> Validate (UI) -> Export flow passes.
+- [ ] T095 [OBS][AUD] End-to-end audit coverage for data changes
+  - **Files**: `packages/observability/src/lib/audit-logger.ts`, `apps/workers/*/src/app/processors/*`, `apps/api/src/app/*`, `tests/contract/audit-events.spec.ts`
+  - **Dependencies**: `@my-org/observability`, `@my-org/shared-types`, `@my-org/database`
+  - **Done**: Every state change or data mutation (ingest, extract, enrich, validate, review corrections, export, template/rule selection) emits immutable audit entries with actor/timestamp/diff; contract test asserts schema and end-to-end propagation.
 
 - [ ] T054 [OBS] Instrument API & Workers with OTel Traces/Metrics/Logs
   - **Files**: `apps/api/src/app/*`, `apps/workers/*/src/app/*`, `packages/observability/*`
@@ -459,6 +473,10 @@
   - **Files**: `docs/ops/dashboards.md`, `helm/values.yaml` (dashboards)
   - **Dependencies**: `@my-org/observability`
   - **Done**: Dashboards show SC-001..SC-008 metrics with thresholds and ownership.
+- [ ] T096 [QA] Enforce 80% coverage gate in CI
+  - **Files**: `package.json`, `nx.json` (or CI workflow), `tools/scripts/check-coverage.ts`
+  - **Dependencies**: Nx/Jest config
+  - **Done**: CI fails if global coverage <80% (line/branch); coverage report published as artifact; documented in CONTRIBUTING.
 
 - [ ] T074 [SC] Schedule Active-Learning Reintroduction
   - **Files**: `docs/roadmap/active-learning.md`
