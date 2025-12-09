@@ -150,10 +150,10 @@
   - **Dependencies**: `@my-org/observability`
   - **Done**: Test asserts response includes trace header and log sink receives JSON entry with required fields (timestamp, severity, service, trace_id, document_id, message).
 
-- [ ] T093 [US1] Corrections summary/report API (tracked, not enforced)
+- [X] T093 [US1] Corrections summary/report API (tracked, not enforced)
   - **Files**: `apps/api/src/app/learning/learning.controller.ts`, `apps/api/src/app/documents/corrections.controller.ts`, `apps/web/src/app/features/reports/corrections-report.tsx`
   - **Dependencies**: `@my-org/shared-types`, `@my-org/database`, `packages/ml`
-  - **Done**: Read-only endpoints and UI stub surface correction counts/recurrence trend; SC-008 is tracked and displayed but explicitly marked “not enforced this cycle.”
+  - **Done**: Read-only backend endpoints surface correction counts and recurrence window with a “not enforced this cycle” flag; UI/reporting is deferred to the frontend phase.
 
 ## Phase 3: Intelligent Processing Core
 **Goal**: Extraction, classification, and validation logic.

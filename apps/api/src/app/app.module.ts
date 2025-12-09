@@ -10,9 +10,17 @@ import { APP_INTERCEPTOR } from '@nestjs/core';
 import { RequestTelemetryInterceptor } from './telemetry/request-telemetry.interceptor';
 import { DocumentsModule } from './documents/documents.module';
 import { IntakeSourcesModule } from './intake-sources/intake-sources.module';
+import { LearningModule } from './learning/learning.module';
 
 @Module({
-  imports: [SecurityModule, AuthModule, DatabaseModule, DocumentsModule, IntakeSourcesModule],
+  imports: [
+    SecurityModule,
+    AuthModule,
+    DatabaseModule,
+    DocumentsModule,
+    IntakeSourcesModule,
+    LearningModule,
+  ],
   controllers: [AppController],
   providers: [
     AppService,
