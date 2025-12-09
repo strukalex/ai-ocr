@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { PrismaService } from '@my-org/database';
 import {
   DocumentIngestRequestDto,
@@ -7,7 +7,7 @@ import {
 import { DocumentStatus } from '@my-org/shared-types';
 import { Queue } from 'bullmq';
 import { QueueService } from '@my-org/queue';
-import { LoggerService } from '@my-org/observability';
+import { AuditLogger, LoggerService } from '@my-org/observability';
 import { context, trace } from '@opentelemetry/api';
 import { randomUUID } from 'crypto';
 
@@ -17,6 +17,7 @@ export class DocumentsService {
     private readonly prisma: PrismaService,
     private readonly queueService: QueueService,
     private readonly logger: LoggerService,
+    private readonly audit: AuditLogger,
   ) {
     this.intakeQueue = queueService.createQueue('intake');
   }
@@ -28,6 +29,24 @@ export class DocumentsService {
     actorId?: string,
     traceIdFromRequest?: string | string[],
   ): Promise<DocumentIngestResponseDto> {
+    const existing = await this.prisma.document.findFirst({
+      where: { checksum: request.checksum },
+      select: { id: true, status: true },
+    });
+    if (existing) {
+      this.logger.info('ingestion.intake_dedup', {
+        documentId: existing.id,
+        checksum: request.checksum,
+        sourceChannel: request.sourceChannel,
+        idempotencyKey: request.idempotencyKey,
+        user_id: actorId ?? 'unknown',
+      });
+      return {
+        documentId: existing.id,
+        status: existing.status as DocumentStatus,
+      };
+    }
+
     const created = await this.prisma.document.create({
       data: {
         sourceChannel: request.sourceChannel,
@@ -82,6 +101,20 @@ export class DocumentsService {
       traceId,
       user_id: actorId ?? 'unknown',
       actorId,
+    });
+
+    await this.audit.log({
+      action: 'ingestion.intake_enqueued',
+      actorId: actorId ?? 'system',
+      outcome: 'success',
+      documentId: created.id,
+      traceId,
+      metadata: {
+        checksum: request.checksum,
+        originalUri: request.originalUri,
+        idempotencyKey: request.idempotencyKey,
+        sourceChannel: request.sourceChannel,
+      },
     });
 
     return {

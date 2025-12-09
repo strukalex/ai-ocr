@@ -32,7 +32,7 @@ export class QueueService {
   createWorker<T = unknown>(
     queueName: string,
     processor: Processor<T>,
-    workerOptions?: WorkerOptions,
+    workerOptions?: Partial<WorkerOptions>,
   ): Worker<T> {
     return new Worker<T>(queueName, processor, {
       ...this.buildBaseOptions(),

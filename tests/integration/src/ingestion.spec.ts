@@ -7,9 +7,15 @@ import { QueueService, withDefaultJobOptions } from '@my-org/queue';
 import { LoggerService } from '@my-org/observability';
 import { JwtAuthGuard } from '../../../apps/api/src/app/auth/jwt-auth.guard';
 import { AuthService } from '../../../apps/api/src/app/auth/auth.service';
+import { mkdtemp, writeFile } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
+
+process.env['DB_AT_REST_ENCRYPTED'] = 'true';
 
 describe('Ingestion Pipeline (integration)', () => {
   let app: INestApplication;
+  let tmpFilePath: string;
 
   const prismaMock = {
     $connect: jest.fn().mockResolvedValue(undefined),
@@ -19,6 +25,7 @@ describe('Ingestion Pipeline (integration)', () => {
     } as any,
     document: {
       create: jest.fn().mockResolvedValue({ id: 'doc-1', status: 'Uploaded' }),
+      findFirst: jest.fn().mockResolvedValue(null),
     } as any,
     intakeRequest: {
       create: jest.fn().mockResolvedValue({ id: 'intake-1' }),
@@ -67,6 +74,10 @@ describe('Ingestion Pipeline (integration)', () => {
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api');
     await app.init();
+
+    const dir = await mkdtemp(join(tmpdir(), 'ingest-'));
+    tmpFilePath = join(dir, 'sample.pdf');
+    await writeFile(tmpFilePath, Buffer.from('test-payload'));
   });
 
   afterAll(async () => {
@@ -76,7 +87,7 @@ describe('Ingestion Pipeline (integration)', () => {
   it('accepts document upload and enqueues intake job', async () => {
     const payload = {
       sourceChannel: 'upload',
-      originalUri: 'file:///tmp/sample.pdf',
+      originalUri: `file://${tmpFilePath}`,
       filename: 'sample.pdf',
       checksum: 'sha256-sample',
       idempotencyKey: 'test-ingest-001',
@@ -117,5 +128,40 @@ describe('Ingestion Pipeline (integration)', () => {
         user_id: 'test-user',
       }),
     );
+  });
+
+  it('dedupes by checksum and returns existing document without enqueue', async () => {
+    prismaMock.document.findFirst = jest
+      .fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'doc-1', status: 'Uploaded' });
+
+    // first request seeds initial document
+    await request(app.getHttpServer())
+      .post('/api/documents')
+      .send({
+        sourceChannel: 'upload',
+        originalUri: `file://${tmpFilePath}`,
+        filename: 'sample.pdf',
+        checksum: 'sha256-sample',
+        idempotencyKey: 'dedupe-1',
+      })
+      .expect(201);
+
+    queueMock.add.mockClear();
+
+    const duplicateResponse = await request(app.getHttpServer())
+      .post('/api/documents')
+      .send({
+        sourceChannel: 'upload',
+        originalUri: 'file:///tmp/sample.pdf',
+        filename: 'sample.pdf',
+        checksum: 'sha256-sample',
+        idempotencyKey: 'dedupe-1',
+      })
+      .expect(201);
+
+    expect(duplicateResponse.body.documentId).toBe('doc-1');
+    expect(queueMock.add).not.toHaveBeenCalled();
   });
 });

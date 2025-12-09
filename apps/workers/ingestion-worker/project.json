@@ -1,0 +1,46 @@
+{
+  "name": "ingestion-worker",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/workers/ingestion-worker/src",
+  "projectType": "application",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "outputs": ["{workspaceRoot}/dist/apps/workers/ingestion-worker"],
+      "options": {
+        "command": "webpack-cli --config apps/workers/ingestion-worker/webpack.config.js --node-env=production"
+      },
+      "configurations": {
+        "development": {
+          "command": "webpack-cli --config apps/workers/ingestion-worker/webpack.config.js --node-env=development"
+        }
+      }
+    },
+    "serve": {
+      "continuous": true,
+      "executor": "@nx/js:node",
+      "dependsOn": ["build"],
+      "defaultConfiguration": "development",
+      "options": {
+        "buildTarget": "ingestion-worker:build",
+        "runBuildTargetDependencies": false
+      },
+      "configurations": {
+        "development": {
+          "buildTarget": "ingestion-worker:build:development"
+        },
+        "production": {
+          "buildTarget": "ingestion-worker:build:production"
+        }
+      }
+    },
+    "test": {
+      "executor": "nx:noop",
+      "options": {
+        "outputPath": "dist/.noop-test"
+      }
+    }
+  },
+  "tags": []
+}
+

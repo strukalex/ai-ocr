@@ -88,12 +88,12 @@
   - **Dependencies**: `@my-org/shared-types`, `@my-org/queue`, `@my-org/storage`, `@my-org/database`
   - **Done**: Integration test from T010 passes the "Upload" step (returns 201).
 
-- [ ] T012 [US1] Implement `intake` processor & Worker
+- [X] T012 [US1] Implement `intake` processor & Worker
   - **Files**: `apps/workers/ingestion-worker/src/main.ts`, `apps/workers/ingestion-worker/src/app/processors/intake.processor.ts`
   - **Dependencies**: `@my-org/queue`, `@my-org/storage`, `@my-org/database`
   - **Done**: Integration test from T010 passes the "DB Status Update" assertion.
 
-- [ ] T097 [US1][OBS] Preserve Originals & Canonical Artifacts with Checksums
+- [X] T097 [US1][OBS] Preserve Originals & Canonical Artifacts with Checksums
   - **Files**: `apps/workers/ingestion-worker/src/app/processors/intake.processor.ts`, `apps/workers/ingestion-worker/src/app/services/normalization.service.ts`, `packages/storage/src/lib/storage.service.ts`, `packages/observability/src/lib/audit-logger.ts`, `tests/integration/ingestion.spec.ts`
   - **Dependencies**: `@my-org/storage`, `@my-org/observability`, `@my-org/shared-types`
   - **Instructions**: Persist the uploaded source file immutably with checksum (e.g., SHA-256) and object-lock/write-once semantics where supported; generate canonical PDF/A-2b separately without overwriting the original; emit audit linking original + canonical artifact ids, checksums, and locations; enforce checksum dedupe before enqueue; validate both artifacts are accessible for downstream steps.

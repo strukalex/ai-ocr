@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { Client, ItemBucketMetadata } from 'minio';
+import { Client, CopyConditions, ItemBucketMetadata } from 'minio';
 import { STORAGE_OPTIONS_TOKEN } from './storage.tokens';
 
 export interface StorageModuleOptions {
@@ -44,6 +44,10 @@ export class StorageService {
     }
   }
 
+  getDefaultBucket(): string {
+    return this.defaultBucket;
+  }
+
   async uploadObject(
     objectName: string,
     content: Buffer,
@@ -54,6 +58,26 @@ export class StorageService {
     const finalMetadata = this.buildMetadata(metadata);
 
     await this.client.putObject(bucket, objectName, content, content.length, finalMetadata);
+  }
+
+  async objectExists(objectName: string, bucket = this.defaultBucket): Promise<boolean> {
+    try {
+      await this.client.statObject(bucket, objectName);
+      return true;
+    } catch (err: any) {
+      if (err?.code === 'NotFound') return false;
+      throw err;
+    }
+  }
+
+  async copyObject(
+    sourceObject: string,
+    destinationObject: string,
+    bucket = this.defaultBucket,
+  ): Promise<void> {
+    await this.ensureBucket(bucket);
+    const conditions = new CopyConditions();
+    await this.client.copyObject(bucket, destinationObject, `/${bucket}/${sourceObject}`, conditions);
   }
 
   async downloadObject(
