@@ -1,0 +1,53 @@
+# Security and platform defaults for ai-ocr
+# These values align with T044/T090 security baseline:
+# - TLS 1.2+ enforcement
+# - At-rest encryption flags for storage (MinIO SSE) and database
+# - Session timeout surface
+# - Audit sink toggle
+
+global:
+  tls:
+    require: true
+    minVersion: TLSv1.2
+    hsts:
+      enabled: true
+      maxAgeSeconds: 31536000
+  security:
+    sessionIdleMinutes: 30
+    # Set to true when the database storage layer has TDE/at-rest encryption enabled
+    dbAtRestEncrypted: true
+
+api:
+  env:
+    REQUIRE_TLS: "true"
+    SESSION_IDLE_MINUTES: "30"
+    DB_AT_REST_ENCRYPTED: "true"
+    MINIO_ENFORCE_SSE: "true"
+    MINIO_SSE_ALGORITHM: "AES256"
+  # Optional: certificate/key provided via secret or external TLS terminator
+  tls:
+    enabled: true
+    secretName: ai-ocr-api-tls
+
+minio:
+  # If deploying bundled MinIO, ensure SSE is enforced
+  extraEnv:
+    - name: MINIO_SSE_KMS_AUTO_ENCRYPTION
+      value: "on"
+    - name: MINIO_SSE_ALGORITHM
+      value: "AES256"
+  persistence:
+    enabled: true
+
+redis:
+  tls:
+    enabled: false  # set true if redis supports TLS in target environment
+
+otel:
+  exporterOtlpEndpoint: "" # set per environment
+
+# Audit sink configuration (DB-backed)
+audit:
+  enabled: true
+
+
