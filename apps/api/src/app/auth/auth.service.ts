@@ -1,14 +1,15 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
+import axios from 'axios';
 import { AuditLogger } from '@my-org/observability';
-import { Role, UserContext } from '@my-org/shared-types';
+import {
+  AuthLoginRequestDto,
+  AuthTokens,
+  JwtClaims,
+  Role,
+  UserContext,
+} from '@my-org/shared-types';
 import * as jwt from 'jsonwebtoken';
 import jwksClient, { SigningKey, JwksClient } from 'jwks-rsa';
-
-interface JwtClaims extends jwt.JwtPayload {
-  preferred_username?: string;
-  realm_access?: { roles?: string[] };
-  resource_access?: Record<string, { roles?: string[] }>;
-}
 
 @Injectable()
 export class AuthService {
@@ -30,10 +31,7 @@ export class AuthService {
     }
     const token = authHeader.slice('Bearer '.length);
     const decoded = await this.verifyJwt(token);
-    const roles =
-      decoded.realm_access?.roles ||
-      decoded.resource_access?.[process.env['KEYCLOAK_CLIENT_ID'] ?? 'ai-ocr']?.roles ||
-      [];
+    const roles = this.resolveRoles(decoded);
 
     const user: UserContext = {
       userId: decoded.sub ?? decoded.preferred_username ?? 'unknown',
@@ -50,6 +48,32 @@ export class AuthService {
     });
 
     return user;
+  }
+
+  async loginWithPassword(payload: AuthLoginRequestDto): Promise<AuthTokens> {
+    try {
+      const tokens = this.hasKeycloakTokenUrl()
+        ? await this.loginWithKeycloak(payload)
+        : await this.loginWithLocalSecret(payload);
+
+      await this.audit.log({
+        action: 'auth.login',
+        actorId: payload.username,
+        roles: [],
+        outcome: 'success',
+      });
+
+      return tokens;
+    } catch (err) {
+      await this.audit.log({
+        action: 'auth.login',
+        actorId: payload.username,
+        roles: [],
+        outcome: 'failure',
+        metadata: { error: err instanceof Error ? err.message : 'unknown' },
+      });
+      throw err;
+    }
   }
 
   private async verifyJwt(token: string): Promise<JwtClaims> {
@@ -73,7 +97,95 @@ export class AuthService {
       const signingKey = key.getPublicKey();
       return jwt.verify(token, signingKey, { algorithms: ['RS256'] }) as JwtClaims;
     }
+
+    const localSecret = process.env['LOCAL_AUTH_SECRET'];
+    if (localSecret) {
+      return jwt.verify(token, localSecret, { algorithms: ['HS256'] }) as JwtClaims;
+    }
+
     throw new UnauthorizedException('No verification key configured');
+  }
+
+  private resolveRoles(decoded: JwtClaims): Role[] {
+    const clientId = process.env['KEYCLOAK_CLIENT_ID'] ?? 'ai-ocr';
+    return (
+      decoded.realm_access?.roles ||
+      decoded.resource_access?.[clientId]?.roles ||
+      decoded.roles ||
+      []
+    ) as Role[];
+  }
+
+  private hasKeycloakTokenUrl(): boolean {
+    return !!process.env['KEYCLOAK_TOKEN_URL'];
+  }
+
+  private async loginWithKeycloak(payload: AuthLoginRequestDto): Promise<AuthTokens> {
+    const tokenUrl = process.env['KEYCLOAK_TOKEN_URL']!;
+    const clientId = process.env['KEYCLOAK_CLIENT_ID'] ?? 'ai-ocr';
+    const clientSecret = process.env['KEYCLOAK_CLIENT_SECRET'];
+
+    try {
+      const response = await axios.post(
+        tokenUrl,
+        new URLSearchParams({
+          grant_type: 'password',
+          username: payload.username,
+          password: payload.password,
+          client_id: clientId,
+          ...(clientSecret ? { client_secret: clientSecret } : {}),
+        }),
+        {
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        },
+      );
+
+      const accessToken = response.data?.access_token;
+      if (!accessToken) {
+        throw new UnauthorizedException('Invalid credentials');
+      }
+
+      return {
+        accessToken,
+        refreshToken: response.data?.refresh_token,
+      };
+    } catch (err) {
+      if (err instanceof UnauthorizedException) throw err;
+      throw new UnauthorizedException('Authentication failed');
+    }
+  }
+
+  private async loginWithLocalSecret(payload: AuthLoginRequestDto): Promise<AuthTokens> {
+    const secret = process.env['LOCAL_AUTH_SECRET'];
+    if (!secret) {
+      throw new UnauthorizedException('No auth provider configured');
+    }
+
+    const defaultRoles = (process.env['LOCAL_AUTH_ROLES'] ?? 'operator,admin')
+      .split(',')
+      .map((r) => r.trim())
+      .filter(Boolean) as Role[];
+
+    const accessToken = jwt.sign(
+      {
+        sub: payload.username,
+        preferred_username: payload.username,
+        roles: defaultRoles,
+      },
+      secret,
+      { algorithm: 'HS256', expiresIn: '1h' },
+    );
+
+    const refreshToken = jwt.sign(
+      {
+        sub: payload.username,
+        type: 'refresh',
+      },
+      secret,
+      { algorithm: 'HS256', expiresIn: '30d' },
+    );
+
+    return { accessToken, refreshToken };
   }
 }
 

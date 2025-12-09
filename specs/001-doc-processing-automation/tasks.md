@@ -125,7 +125,7 @@
   - **Dependencies**: `@my-org/shared-types`, `@my-org/database`
   - **Done**: Classifier supports LayoutLM/LLM calls based on config, falling back to simple keyword matching if configured.
 
-- [ ] T033 [US1] Implement Auth Module in API
+- [X] T033 [US1] Implement Auth Module in API
   - **Files**: `apps/api/src/app/auth/*`
   - **Dependencies**: `@my-org/shared-types`, `keycloak-connect` (or similar)
   - **Done**: Endpoints are protected by Bearer token; 401 returned if missing.
