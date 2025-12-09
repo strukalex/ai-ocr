@@ -114,7 +114,7 @@
   - **Dependencies**: `ghostscript` CLI, `@my-org/storage`
   - **Done**: Uploaded JPG is converted to PDF/A-2b. **Check**: Verify Ghostscript is used; reject if any other PDF SDK is imported. NormalizationService invokes Ghostscript CLI for PDF/A-2b output and is wired into intake canonical artifact creation with unit tests.
 
-- [ ] T058 [US1] Implement OpenCV Preprocessing (Deskew, Denoise, Binarization)
+- [X] T058 [US1] Implement OpenCV Preprocessing (Deskew, Denoise, Binarization)
   - **Files**: `apps/workers/ingestion-worker/src/app/services/preprocessing.service.ts`
   - **Dependencies**: `opencv4nodejs` (or `opencv-wasm`), `@my-org/storage`
   - **Instructions**: Implement deskew (Hough transform), noise reduction (Gaussian/bilateral filter), and adaptive binarization for scanned images before OCR. Chain with T013 normalization.

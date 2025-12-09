@@ -10,7 +10,8 @@
       "outputs": ["{workspaceRoot}/coverage/tests/contract"],
       "options": {
         "jestConfig": "tests/contract/jest.config.ts",
-        "passWithNoTests": false
+        "passWithNoTests": false,
+        "runInBand": true
       }
     }
   },

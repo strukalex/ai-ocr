@@ -237,27 +237,20 @@ export class SplitProcessor {
     const pages = pdf.getPages();
 
     for (let idx = 0; idx < pages.length; idx++) {
-      const page = pages[idx];
-      const single = await PDFDocument.create();
-      const [copiedPage] = await single.copyPages(pdf, [idx]);
-      single.addPage(copiedPage);
-      const buffer = Buffer.from(await single.save());
-      const textHint = buffer.toString('latin1');
+      const textHint = await this.extractPageText(pdf, idx);
 
       const headerMatch = textHint.match(/HEADER:([A-Za-z0-9 _-]+)/i);
       const header = headerMatch ? headerMatch[1].trim() : undefined;
       const hasSeparatorMarker = /---SPLIT---|SPLIT\s*MARKER|SEPARATOR\s*SHEET/i.test(textHint);
-      const isBlankish = textHint.length < 600; // heuristic: very small PDF content implies blank/separator
 
       const shouldStartNew =
         idx === 0
           ? false
           : hasSeparatorMarker ||
             (currentHeader && header && header !== currentHeader) ||
-            (!currentHeader && header) ||
-            isBlankish;
+            (!currentHeader && header);
 
-      if (hasSeparatorMarker || isBlankish) {
+      if (hasSeparatorMarker) {
         // Close prior segment before separator; separator page is not emitted.
         if (idx - 1 >= currentStart) {
           segments.push({ start: currentStart, end: idx - 1, header: currentHeader });
@@ -267,7 +260,7 @@ export class SplitProcessor {
         continue;
       }
 
-      if (shouldStartNew) {
+      if (shouldStartNew && currentStart < idx) {
         segments.push({ start: currentStart, end: idx - 1, header: currentHeader });
         currentStart = idx;
       }
@@ -281,6 +274,14 @@ export class SplitProcessor {
 
     // Filter out any empty ranges
     return segments.filter((seg) => seg.start <= seg.end);
+  }
+
+  protected async extractPageText(pdf: PDFDocument, idx: number): Promise<string> {
+    const single = await PDFDocument.create();
+    const [copiedPage] = await single.copyPages(pdf, [idx]);
+    single.addPage(copiedPage);
+    const buffer = Buffer.from(await single.save());
+    return buffer.toString('utf8');
   }
 }
 

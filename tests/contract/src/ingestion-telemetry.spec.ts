@@ -68,7 +68,9 @@ describe('Ingestion Telemetry (contract)', () => {
 
   afterAll(async () => {
     consoleSpy.mockRestore();
+    await app?.getHttpServer()?.close?.();
     await app?.close();
+    await prismaMock.$disconnect?.();
   });
 
   it('propagates trace headers and structured log with trace_id/document_id/user_id', async () => {

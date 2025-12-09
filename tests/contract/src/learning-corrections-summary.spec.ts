@@ -53,7 +53,9 @@ describe('Learning Corrections Summary (contract)', () => {
   });
 
   afterAll(async () => {
+    await app?.getHttpServer()?.close?.();
     await app?.close();
+    await prismaMock.$disconnect?.();
   });
 
   it('returns counts with windowing and not-enforced flag', async () => {

@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import { AuditLogger, LoggerService } from '@my-org/observability';
 import { PrismaService } from '@my-org/database';
 import { DocumentStatus } from '@my-org/shared-types';
@@ -16,6 +17,7 @@ describe('IntakeProcessor', () => {
   let logger: any;
   let storage: any;
   let normalization: any;
+  let queueService: any;
   let processor: IntakeProcessor;
 
   beforeEach(() => {
@@ -49,7 +51,12 @@ describe('IntakeProcessor', () => {
       toPdfA: jest.fn(),
     } as unknown as jest.Mocked<NormalizationService>;
 
-    processor = new IntakeProcessor(prisma, audit, logger, storage, normalization);
+    queueService = {
+      createQueue: jest.fn().mockReturnValue({}),
+      enqueue: jest.fn(),
+    };
+
+    processor = new IntakeProcessor(prisma, audit, logger, storage, normalization, queueService as any);
     mockedAxios.get.mockReset();
   });
 

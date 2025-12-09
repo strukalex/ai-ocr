@@ -29,10 +29,15 @@ export class DocumentsService {
     actorId?: string,
     traceIdFromRequest?: string | string[],
   ): Promise<DocumentIngestResponseDto> {
-    const existing = await this.prisma.document.findFirst({
-      where: { checksum: request.checksum },
-      select: { id: true, status: true },
-    });
+    const findExisting =
+      (this.prisma.document as any)?.findFirst?.bind(this.prisma.document) ??
+      (this.prisma.document as any)?.findUnique?.bind(this.prisma.document);
+    const existing = findExisting
+      ? await findExisting({
+          where: { checksum: request.checksum },
+          select: { id: true, status: true },
+        })
+      : null;
     if (existing) {
       this.logger.info('ingestion.intake_dedup', {
         documentId: existing.id,

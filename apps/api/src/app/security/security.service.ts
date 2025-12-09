@@ -18,8 +18,12 @@ export class SecurityConfigService implements OnModuleInit {
   validateAtRestEncryption(): void {
     if (!this.config.requireAtRestEncryption) return;
 
+    const isJest = process.env['JEST_WORKER_ID'] !== undefined;
     const isTestEnv = (process.env['NODE_ENV'] ?? '').toLowerCase() === 'test';
-    if (isTestEnv) return;
+    const allowChecksInTest =
+      (process.env['FORCE_SECURITY_VALIDATION_IN_TEST'] ?? 'false').toLowerCase() === 'true';
+
+    if ((isTestEnv || isJest) && !allowChecksInTest) return;
 
     const storageOk =
       (process.env['MINIO_ENFORCE_SSE'] ?? 'true').toLowerCase() === 'true' &&

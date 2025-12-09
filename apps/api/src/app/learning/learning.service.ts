@@ -112,7 +112,14 @@ export class LearningService {
       },
     });
 
-    this.logger.info('learning.retrain_triggered', response);
+    this.logger.info('learning.retrain_triggered', {
+      jobId: response.jobId,
+      documentType: response.documentType,
+      minCorrections: response.minCorrections,
+      dryRun: response.dryRun,
+      status: response.status,
+      startedAt: response.startedAt,
+    });
 
     return response;
   }

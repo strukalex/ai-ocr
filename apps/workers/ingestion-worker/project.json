@@ -35,9 +35,11 @@
       }
     },
     "test": {
-      "executor": "nx:noop",
+      "executor": "@nx/jest:jest",
+      "outputs": ["{workspaceRoot}/coverage/apps/workers/ingestion-worker"],
       "options": {
-        "outputPath": "dist/.noop-test"
+        "jestConfig": "apps/workers/ingestion-worker/jest.config.ts",
+        "passWithNoTests": true
       }
     }
   },
