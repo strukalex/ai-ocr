@@ -7,6 +7,16 @@ import { NormalizationService } from '../services/normalization.service';
 import axios from 'axios';
 import { IntakeProcessor, IntakeJobPayload } from './intake.processor';
 import { createHash } from 'crypto';
+import { PreprocessingService } from '../services/preprocessing.service';
+
+jest.mock('../services/preprocessing.service', () => {
+  const preprocess = jest.fn((buffer: Buffer) => ({ buffer, correctionAngleDeg: 0 }));
+  return {
+    PreprocessingService: jest.fn().mockImplementation(() => ({
+      preprocess,
+    })),
+  };
+});
 
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -16,6 +26,7 @@ describe('IntakeProcessor', () => {
   let audit: any;
   let logger: any;
   let storage: any;
+  let preprocessing: any;
   let normalization: any;
   let queueService: any;
   let processor: IntakeProcessor;
@@ -47,6 +58,8 @@ describe('IntakeProcessor', () => {
       copyObject: jest.fn(),
     } as unknown as jest.Mocked<StorageService>;
 
+    preprocessing = new (PreprocessingService as unknown as jest.Mock)();
+
     normalization = {
       toPdfA: jest.fn(),
     } as unknown as jest.Mocked<NormalizationService>;
@@ -56,7 +69,7 @@ describe('IntakeProcessor', () => {
       enqueue: jest.fn(),
     };
 
-    processor = new IntakeProcessor(prisma, audit, logger, storage, normalization, queueService as any);
+    processor = new IntakeProcessor(prisma, audit, logger, storage, preprocessing as any, normalization, queueService as any);
     mockedAxios.get.mockReset();
   });
 
@@ -177,6 +190,42 @@ describe('IntakeProcessor', () => {
       }),
     });
     expect(storage.uploadObject).not.toHaveBeenCalled();
+  });
+
+  it('preprocesses images before normalization and records angle', async () => {
+    const payload: IntakeJobPayload = {
+      documentId: 'doc-img',
+      checksum: 'chk-img',
+      originalUri: 'file:///tmp/scan.png',
+      filename: 'scan.png',
+      sourceChannel: 'upload',
+      metadata: {
+        rawContentBase64: Buffer.from('raw-image-bytes').toString('base64'),
+      },
+    };
+
+    const preprocessedBuffer = Buffer.from('processed-image-bytes');
+    preprocessing.preprocess.mockReturnValue({ buffer: preprocessedBuffer, correctionAngleDeg: -9.5 });
+
+    prisma.document.findUnique.mockResolvedValue({
+      id: payload.documentId,
+      status: DocumentStatus.Uploaded,
+    } as any);
+    storage.objectExists.mockResolvedValueOnce(false).mockResolvedValueOnce(false);
+    normalization.toPdfA.mockResolvedValue(Buffer.from('pdfa'));
+
+    await processor.handle({ data: payload, id: 'job-img' } as any);
+
+    expect(preprocessing.preprocess).toHaveBeenCalledWith(expect.any(Buffer));
+    expect(normalization.toPdfA).toHaveBeenCalledWith(preprocessedBuffer, payload.filename);
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          preprocessingApplied: true,
+          correctionAngleDeg: -9.5,
+        }),
+      }),
+    );
   });
 });
 

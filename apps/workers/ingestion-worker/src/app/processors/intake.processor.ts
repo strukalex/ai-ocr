@@ -12,6 +12,7 @@ import { extname } from 'path';
 import { URL } from 'url';
 import { PDFDocument } from 'pdf-lib';
 import { NormalizationService } from '../services/normalization.service';
+import { PreprocessingService } from '../services/preprocessing.service';
 
 export interface IntakeJobPayload {
   documentId: string;
@@ -31,6 +32,7 @@ export class IntakeProcessor {
     private readonly audit: AuditLogger,
     private readonly logger: LoggerService,
     private readonly storage: StorageService,
+    private readonly preprocessing: PreprocessingService,
     private readonly normalization: NormalizationService,
     private readonly queueService: QueueService,
   ) {
@@ -92,12 +94,33 @@ export class IntakeProcessor {
       );
     }
 
+    // Deskew/denoise/binarize images before PDF/A normalization when applicable.
+    const contentType = this.inferContentType(payload.filename);
+    let bufferForNormalization = originalBuffer;
+    let preprocessingApplied = false;
+    let correctionAngleDeg: number | null = null;
+
+    if (contentType?.startsWith('image/')) {
+      try {
+        const result = this.preprocessing.preprocess(originalBuffer);
+        bufferForNormalization = result.buffer;
+        preprocessingApplied = true;
+        correctionAngleDeg = result.correctionAngleDeg;
+      } catch (err) {
+        this.logger.warn('ingestion.preprocessing_failed', {
+          traceId,
+          documentId: payload.documentId,
+          error: err instanceof Error ? err.message : 'unknown',
+        });
+      }
+    }
+
     // Create canonical artifact separately using PDF/A-2b conversion to keep originals immutable.
     const canonicalExists = await this.storage.objectExists(canonicalKey, bucket);
     let canonicalChecksum = checksumToPersist;
     let canonicalBuffer: Buffer | null = null;
     if (!canonicalExists) {
-      canonicalBuffer = await this.normalization.toPdfA(originalBuffer, payload.filename);
+      canonicalBuffer = await this.normalization.toPdfA(bufferForNormalization, payload.filename);
       canonicalChecksum = this.computeSha256(canonicalBuffer);
 
       await this.storage.uploadObject(
@@ -168,6 +191,8 @@ export class IntakeProcessor {
         canonicalChecksum,
         idempotencyKey: payload.idempotencyKey,
         sourceChannel: payload.sourceChannel,
+        preprocessingApplied,
+        correctionAngleDeg,
       },
     });
 
