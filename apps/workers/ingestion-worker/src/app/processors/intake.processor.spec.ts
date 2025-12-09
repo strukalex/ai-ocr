@@ -1,10 +1,14 @@
-import { IntakeProcessor, IntakeJobPayload } from './intake.processor';
 import { AuditLogger, LoggerService } from '@my-org/observability';
 import { PrismaService } from '@my-org/database';
 import { DocumentStatus } from '@my-org/shared-types';
 import { StorageService } from '@my-org/storage';
 import { NormalizationService } from '../services/normalization.service';
+import axios from 'axios';
+import { IntakeProcessor, IntakeJobPayload } from './intake.processor';
 import { createHash } from 'crypto';
+
+jest.mock('axios');
+const mockedAxios = axios as jest.Mocked<typeof axios>;
 
 describe('IntakeProcessor', () => {
   let prisma: any;
@@ -46,6 +50,7 @@ describe('IntakeProcessor', () => {
     } as unknown as jest.Mocked<NormalizationService>;
 
     processor = new IntakeProcessor(prisma, audit, logger, storage, normalization);
+    mockedAxios.get.mockReset();
   });
 
   it('updates document and intake request, emits audit/log', async () => {
@@ -130,6 +135,41 @@ describe('IntakeProcessor', () => {
     expect(logger.warn).toHaveBeenCalled();
     expect(prisma.document.update).not.toHaveBeenCalled();
     expect(audit.log).not.toHaveBeenCalled();
+  });
+
+  it('downloads http originals instead of writing empty content', async () => {
+    const payload: IntakeJobPayload = {
+      documentId: 'doc-http',
+      checksum: 'chk-http',
+      originalUri: 'https://example.com/doc.pdf',
+      filename: 'doc.pdf',
+      sourceChannel: 'upload',
+    };
+
+    const httpBuffer = Buffer.from('remote-content');
+    mockedAxios.get.mockResolvedValue({ data: httpBuffer } as any);
+    prisma.document.findUnique.mockResolvedValue({
+      id: payload.documentId,
+      originalUri: payload.originalUri,
+      status: DocumentStatus.Uploaded,
+    } as any);
+    storage.objectExists.mockResolvedValue(true);
+
+    await processor.handle({
+      data: payload,
+      id: 'job-http',
+    } as any);
+
+    expect(mockedAxios.get).toHaveBeenCalledWith(payload.originalUri, {
+      responseType: 'arraybuffer',
+    });
+    expect(prisma.document.update).toHaveBeenCalledWith({
+      where: { id: payload.documentId },
+      data: expect.objectContaining({
+        originalUri: payload.originalUri,
+      }),
+    });
+    expect(storage.uploadObject).not.toHaveBeenCalled();
   });
 });
 

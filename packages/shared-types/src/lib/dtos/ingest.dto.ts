@@ -17,13 +17,21 @@ class IngestMetadataDto {
   @IsOptional()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   payload?: Record<string, any>;
+
+  @IsString()
+  @IsOptional()
+  rawContentBase64?: string;
 }
 
 export class DocumentIngestRequestDto {
   @IsEnum(SourceChannel)
   sourceChannel!: SourceChannel;
 
-  @IsUrl()
+  @IsUrl({
+    protocols: ['http', 'https', 'file', 's3'],
+    require_protocol: true,
+    require_tld: false,
+  })
   originalUri!: string;
 
   @IsString()

@@ -4,6 +4,7 @@ import { AuditLogger, LoggerService } from '@my-org/observability';
 import { DocumentStatus } from '@my-org/shared-types';
 import { StorageService } from '@my-org/storage';
 import { Job } from 'bullmq';
+import axios from 'axios';
 import { createHash } from 'crypto';
 import { readFile } from 'fs/promises';
 import { extname } from 'path';
@@ -195,6 +196,22 @@ export class IntakeProcessor {
           originalUri: uri,
           error: (err as Error).message,
         });
+      }
+    }
+
+    // http(s):// support for externally hosted documents
+    if (uri.startsWith('http://') || uri.startsWith('https://')) {
+      try {
+        const response = await axios.get<ArrayBuffer>(uri, { responseType: 'arraybuffer' });
+        return Buffer.from(response.data);
+      } catch (err) {
+        this.logger.warn('ingestion.intake_http_fetch_failed', {
+          traceId,
+          documentId: payload.documentId,
+          originalUri: uri,
+          error: (err as Error).message,
+        });
+        return Buffer.alloc(0);
       }
     }
 

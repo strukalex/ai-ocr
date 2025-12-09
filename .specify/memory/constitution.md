@@ -92,6 +92,9 @@ formal amendment.
 - Plan and spec phases must prove constitution alignment before implementation.
 - Tests: Integration + unit tests on backend; RTL + Playwright on frontend; mock
   all third-party services via DI. Coverage gate 80% enforced in CI.
+- Post-implementation: every feature/change must execute the relevant test
+  suites locally after code and test
+  updates, not just author tests. Task sign-off requires a green run.
 - Observability: OTel traces, structured logs, and metrics are mandatory per
   feature. Webhook contracts require contract tests.
 - Data: Schema versioning for templates and DB migrations with rollback steps.
