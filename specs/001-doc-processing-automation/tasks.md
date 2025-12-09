@@ -109,10 +109,10 @@
   - **Dependencies**: `pdf-lib` (or ghostscript), `@my-org/shared-types`
   - **Instructions**: Detect split points (e.g., separator sheet/barcode/new header), split PDFs into child artifacts, mark parent as "Split", and enqueue intake jobs for each child; ensure child documents inherit linkage to parent/root ids per data model.
 
-- [ ] T013 [US1] Implement PDF/A-2b normalization using Ghostscript
+- [X] T013 [US1] Implement PDF/A-2b normalization using Ghostscript
   - **Files**: `apps/workers/ingestion-worker/src/app/services/normalization.service.ts`
-  - **Dependencies**: `ghostscript4js` (via wrapper), `@my-org/storage`
-  - **Done**: Uploaded JPG is converted to PDF/A-2b. **Check**: Verify Ghostscript is used; reject if any other PDF SDK is imported.
+  - **Dependencies**: `ghostscript` CLI, `@my-org/storage`
+  - **Done**: Uploaded JPG is converted to PDF/A-2b. **Check**: Verify Ghostscript is used; reject if any other PDF SDK is imported. NormalizationService invokes Ghostscript CLI for PDF/A-2b output and is wired into intake canonical artifact creation with unit tests.
 
 - [ ] T058 [US1] Implement OpenCV Preprocessing (Deskew, Denoise, Binarization)
   - **Files**: `apps/workers/ingestion-worker/src/app/services/preprocessing.service.ts`

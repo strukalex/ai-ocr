@@ -1,0 +1,14 @@
+# Common ignores for Helm chart packaging
+.git/
+.github/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+node_modules/
+*.tgz
+*.swp
+*.tmp
+*.bak
+chart-*.tgz
+

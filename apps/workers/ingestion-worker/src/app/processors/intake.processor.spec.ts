@@ -3,12 +3,15 @@ import { AuditLogger, LoggerService } from '@my-org/observability';
 import { PrismaService } from '@my-org/database';
 import { DocumentStatus } from '@my-org/shared-types';
 import { StorageService } from '@my-org/storage';
+import { NormalizationService } from '../services/normalization.service';
+import { createHash } from 'crypto';
 
 describe('IntakeProcessor', () => {
-  let prisma: jest.Mocked<PrismaService>;
-  let audit: jest.Mocked<AuditLogger>;
-  let logger: jest.Mocked<LoggerService>;
-  let storage: jest.Mocked<StorageService>;
+  let prisma: any;
+  let audit: any;
+  let logger: any;
+  let storage: any;
+  let normalization: any;
   let processor: IntakeProcessor;
 
   beforeEach(() => {
@@ -38,7 +41,11 @@ describe('IntakeProcessor', () => {
       copyObject: jest.fn(),
     } as unknown as jest.Mocked<StorageService>;
 
-    processor = new IntakeProcessor(prisma, audit, logger, storage);
+    normalization = {
+      toPdfA: jest.fn(),
+    } as unknown as jest.Mocked<NormalizationService>;
+
+    processor = new IntakeProcessor(prisma, audit, logger, storage, normalization);
   });
 
   it('updates document and intake request, emits audit/log', async () => {
@@ -57,6 +64,9 @@ describe('IntakeProcessor', () => {
       status: DocumentStatus.Uploaded,
     } as any);
     storage.objectExists.mockResolvedValueOnce(false).mockResolvedValueOnce(false);
+    const canonicalBuffer = Buffer.from('pdfa-content');
+    normalization.toPdfA.mockResolvedValue(canonicalBuffer);
+    const canonicalChecksum = createHash('sha256').update(canonicalBuffer).digest('hex');
 
     await processor.handle({
       data: payload,
@@ -87,7 +97,7 @@ describe('IntakeProcessor', () => {
     expect(storage.uploadObject).toHaveBeenCalledWith(
       'canonical/chk-123.pdfa',
       expect.any(Buffer),
-      expect.objectContaining({ 'checksum-sha256': expect.any(String) }),
+      expect.objectContaining({ 'checksum-sha256': canonicalChecksum }),
       'documents',
     );
 

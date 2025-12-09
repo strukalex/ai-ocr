@@ -8,6 +8,7 @@ import { createHash } from 'crypto';
 import { readFile } from 'fs/promises';
 import { extname } from 'path';
 import { URL } from 'url';
+import { NormalizationService } from '../services/normalization.service';
 
 export interface IntakeJobPayload {
   documentId: string;
@@ -27,6 +28,7 @@ export class IntakeProcessor {
     private readonly audit: AuditLogger,
     private readonly logger: LoggerService,
     private readonly storage: StorageService,
+    private readonly normalization: NormalizationService,
   ) {}
 
   async handle(job: Job<IntakeJobPayload>): Promise<void> {
@@ -82,12 +84,11 @@ export class IntakeProcessor {
       );
     }
 
-    // Create canonical artifact separately (current stub uses source buffer; PDF/A conversion
-    // will be added in T013).
+    // Create canonical artifact separately using PDF/A-2b conversion to keep originals immutable.
     const canonicalExists = await this.storage.objectExists(canonicalKey, bucket);
     let canonicalChecksum = checksumToPersist;
     if (!canonicalExists) {
-      const canonicalBuffer = await this.createCanonicalBuffer(originalBuffer, traceId);
+      const canonicalBuffer = await this.normalization.toPdfA(originalBuffer, payload.filename);
       canonicalChecksum = this.computeSha256(canonicalBuffer);
 
       await this.storage.uploadObject(
@@ -226,15 +227,6 @@ export class IntakeProcessor {
       default:
         return undefined;
     }
-  }
-
-  private async createCanonicalBuffer(source: Buffer, traceId?: string): Promise<Buffer> {
-    // Placeholder until T013 adds real PDF/A conversion. For now, ensure we persist the
-    // content under a distinct key to keep original immutable.
-    if (source.length === 0) {
-      this.logger.warn('ingestion.intake_canonical_empty_source', { traceId });
-    }
-    return source;
   }
 }
 

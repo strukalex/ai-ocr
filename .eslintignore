@@ -1,6 +1,22 @@
-node_modules
-dist
-build
-coverage
-.nx/cache
-tmp
+# Build and cache outputs
+dist/
+build/
+coverage/
+tmp/
+.nx/
+
+# Dependencies
+node_modules/
+
+# Env/config & logs
+.env
+.env.*
+*.log
+*.tsbuildinfo
+
+# Editors/tooling
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+.specstory/
