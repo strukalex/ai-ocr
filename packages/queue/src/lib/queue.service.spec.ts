@@ -21,6 +21,9 @@ describe('QueueService', () => {
     queuePrefix: 'test',
     redisUrl: 'redis://localhost:6379',
   });
+  const jobExistsError = Object.assign(new Error('Job jobId already exists'), {
+    name: 'JobIdAlreadyExistsError',
+  });
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -29,14 +32,14 @@ describe('QueueService', () => {
   it('returns existing job when jobId matches', async () => {
     const existingJob = { id: 'job-existing', getState: jest.fn().mockResolvedValue('waiting') } as any;
     const queueMock = {
+      add: jest.fn().mockRejectedValue(jobExistsError),
       getJob: jest.fn().mockResolvedValue(existingJob),
-      add: jest.fn(),
     } as any;
 
     const job = await service.enqueue(queueMock, 'intake', { foo: 'bar' }, { jobId: 'abc' });
 
     expect(job).toBe(existingJob);
-    expect(queueMock.add).not.toHaveBeenCalled();
+    expect(queueMock.add).toHaveBeenCalledTimes(1);
   });
 
   it('enqueues new job with merged defaults when no existing job', async () => {
@@ -82,17 +85,35 @@ describe('QueueService', () => {
   });
 
   it('re-enqueues when existing job is terminal', async () => {
-    const terminalJob = { id: 'job-old', getState: jest.fn().mockResolvedValue('failed') } as any;
+    const terminalJob = {
+      id: 'job-old',
+      getState: jest.fn().mockResolvedValue('failed'),
+      remove: jest.fn(),
+    } as any;
     const queueMock = {
+      add: jest.fn().mockRejectedValueOnce(jobExistsError).mockResolvedValueOnce({ id: 'job-new' }),
       getJob: jest.fn().mockResolvedValue(terminalJob),
-      add: jest.fn().mockResolvedValue({ id: 'job-new' }),
     } as any;
 
     const job = await service.enqueue(queueMock, 'intake', { foo: 'bar' }, { jobId: 'abc' });
 
     expect(queueMock.getJob).toHaveBeenCalledWith('abc');
-    expect(queueMock.add).toHaveBeenCalled();
+    expect(queueMock.add).toHaveBeenCalledTimes(2);
+    expect(job.id).toBe('job-new');
+  });
+
+  it('retries add when existing job disappears between checks', async () => {
+    const queueMock = {
+      add: jest.fn().mockRejectedValueOnce(jobExistsError).mockResolvedValueOnce({ id: 'job-new' }),
+      getJob: jest.fn().mockResolvedValue(null),
+    } as any;
+
+    const job = await service.enqueue(queueMock, 'intake', { foo: 'bar' }, { jobId: 'abc' });
+
+    expect(queueMock.add).toHaveBeenCalledTimes(2);
+    expect(queueMock.getJob).toHaveBeenCalledWith('abc');
     expect(job.id).toBe('job-new');
   });
 });
+
 

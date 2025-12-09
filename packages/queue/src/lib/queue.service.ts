@@ -47,21 +47,40 @@ export class QueueService {
     options?: JobsOptions,
   ): Promise<Job> {
     const jobOptions = withDefaultJobOptions(options);
+    const reusableStates = new Set(['waiting', 'active', 'delayed', 'paused']);
 
-    /**
-     * Idempotency: reuse an existing active job with the same id. If the prior job
-     * is terminal (failed/completed), enqueue a fresh one so manual replays are not
-     * blocked by old entries.
-     */
-    if (jobOptions.jobId) {
-      const existing = await queue.getJob(jobOptions.jobId);
-      if (existing) {
-        const state = await existing.getState();
-        const reusableStates = new Set(['waiting', 'active', 'delayed', 'paused']);
-        if (reusableStates.has(state)) {
-          return existing as Job;
-        }
+    if (!jobOptions.jobId) {
+      return queue.add(name as any, data as any, jobOptions);
+    }
+
+    const jobId = jobOptions.jobId;
+
+    // First, optimistically try to add the job. BullMQ guarantees uniqueness on jobId.
+    try {
+      return await queue.add(name as any, data as any, jobOptions);
+    } catch (err) {
+      if (!isJobIdAlreadyExistsError(err)) {
+        throw err;
       }
+    }
+
+    // A job with this id already exists. Inspect and act based on its latest state.
+    const existing = await queue.getJob(jobId);
+    if (!existing) {
+      // It was removed after the first add attempt; retry add once.
+      return queue.add(name as any, data as any, jobOptions);
+    }
+
+    const state = await existing.getState();
+    if (reusableStates.has(state)) {
+      return existing as Job;
+    }
+
+    // Terminal state: remove and re-add to allow replay. If removal races, swallow and retry add.
+    try {
+      await existing.remove();
+    } catch {
+      /* best-effort remove; continue to re-add */
     }
 
     return queue.add(name as any, data as any, jobOptions);
@@ -75,5 +94,14 @@ export class QueueService {
       prefix: this.options.queuePrefix ?? 'bull',
     };
   }
+}
+
+function isJobIdAlreadyExistsError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return (
+    error.name === 'JobIdAlreadyExistsError' ||
+    error.message?.toLowerCase().includes('jobid') ||
+    error.message?.toLowerCase().includes('already exists')
+  );
 }
 

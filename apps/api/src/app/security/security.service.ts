@@ -22,7 +22,7 @@ export class SecurityConfigService implements OnModuleInit {
     if (isTestEnv) return;
 
     const storageOk =
-      (process.env['MINIO_ENFORCE_SSE'] ?? 'true').toLowerCase() !== 'false' &&
+      (process.env['MINIO_ENFORCE_SSE'] ?? 'true').toLowerCase() === 'true' &&
       (process.env['MINIO_SSE_ALGORITHM'] ?? 'AES256').length > 0;
 
     const dbEncrypted =

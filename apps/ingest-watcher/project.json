@@ -1,0 +1,46 @@
+{
+  "name": "ingest-watcher",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/ingest-watcher/src",
+  "projectType": "application",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "outputs": ["{workspaceRoot}/dist/apps/ingest-watcher"],
+      "options": {
+        "command": "webpack-cli --config apps/ingest-watcher/webpack.config.js --node-env=production"
+      },
+      "configurations": {
+        "development": {
+          "command": "webpack-cli --config apps/ingest-watcher/webpack.config.js --node-env=development"
+        }
+      }
+    },
+    "serve": {
+      "continuous": true,
+      "executor": "@nx/js:node",
+      "dependsOn": ["build"],
+      "defaultConfiguration": "development",
+      "options": {
+        "buildTarget": "ingest-watcher:build",
+        "runBuildTargetDependencies": false
+      },
+      "configurations": {
+        "development": {
+          "buildTarget": "ingest-watcher:build:development"
+        },
+        "production": {
+          "buildTarget": "ingest-watcher:build:production"
+        }
+      }
+    },
+    "test": {
+      "executor": "nx:noop",
+      "options": {
+        "outputPath": "dist/.noop-test"
+      }
+    }
+  },
+  "tags": []
+}
+

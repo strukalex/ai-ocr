@@ -1,14 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@my-org/database';
 import { AuditLogger, LoggerService } from '@my-org/observability';
-import { DocumentStatus } from '@my-org/shared-types';
+import { DocumentStatus, SourceChannel } from '@my-org/shared-types';
+import { QueueService } from '@my-org/queue';
 import { StorageService } from '@my-org/storage';
-import { Job } from 'bullmq';
+import { Job, Queue } from 'bullmq';
 import axios from 'axios';
 import { createHash } from 'crypto';
 import { readFile } from 'fs/promises';
 import { extname } from 'path';
 import { URL } from 'url';
+import { PDFDocument } from 'pdf-lib';
 import { NormalizationService } from '../services/normalization.service';
 
 export interface IntakeJobPayload {
@@ -30,7 +32,12 @@ export class IntakeProcessor {
     private readonly logger: LoggerService,
     private readonly storage: StorageService,
     private readonly normalization: NormalizationService,
-  ) {}
+    private readonly queueService: QueueService,
+  ) {
+    this.splitQueue = this.queueService.createQueue('split');
+  }
+
+  private readonly splitQueue: Queue;
 
   async handle(job: Job<IntakeJobPayload>): Promise<void> {
     const payload = job.data;
@@ -88,8 +95,9 @@ export class IntakeProcessor {
     // Create canonical artifact separately using PDF/A-2b conversion to keep originals immutable.
     const canonicalExists = await this.storage.objectExists(canonicalKey, bucket);
     let canonicalChecksum = checksumToPersist;
+    let canonicalBuffer: Buffer | null = null;
     if (!canonicalExists) {
-      const canonicalBuffer = await this.normalization.toPdfA(originalBuffer, payload.filename);
+      canonicalBuffer = await this.normalization.toPdfA(originalBuffer, payload.filename);
       canonicalChecksum = this.computeSha256(canonicalBuffer);
 
       await this.storage.uploadObject(
@@ -114,6 +122,32 @@ export class IntakeProcessor {
         canonicalUri,
       },
     });
+
+    // Opportunistically enqueue split job when the document appears multi-part.
+    if (await this.shouldSplit(originalBuffer, canonicalBuffer ?? undefined)) {
+      await this.queueService.enqueue(
+        this.splitQueue,
+        'split',
+        {
+          documentId: payload.documentId,
+          canonicalUri,
+          originalUri,
+          filename: payload.filename,
+          sourceChannel: payload.sourceChannel as SourceChannel,
+          traceId,
+        },
+        {
+          jobId: `${payload.documentId}:split`,
+        },
+      );
+
+      this.logger.info('ingestion.split_enqueued', {
+        documentId: payload.documentId,
+        traceId,
+        canonicalUri,
+        originalUri,
+      });
+    }
 
     await this.prisma.intakeRequest.updateMany({
       where: { documentId: payload.documentId },
@@ -243,6 +277,19 @@ export class IntakeProcessor {
         return 'image/tiff';
       default:
         return undefined;
+    }
+  }
+
+  private async shouldSplit(originalBuffer: Buffer, canonicalBuffer?: Buffer): Promise<boolean> {
+    const candidate = canonicalBuffer ?? originalBuffer;
+    if (!candidate || candidate.length === 0) return false;
+
+    try {
+      const pdf = await PDFDocument.load(candidate);
+      return pdf.getPageCount() > 1;
+    } catch {
+      // Not a PDF; cannot split heuristically.
+      return false;
     }
   }
 }

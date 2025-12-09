@@ -5,11 +5,12 @@ import { StorageModule } from '@my-org/storage';
 import { AuditLogger, TracingModule } from '@my-org/observability';
 import { IntakeProcessor } from './processors/intake.processor';
 import { NormalizationService } from './services/normalization.service';
+import { SplitProcessor } from './processors/split.processor';
 
 @Module({
   imports: [DatabaseModule, QueueModule, StorageModule, TracingModule],
-  providers: [AuditLogger, NormalizationService, IntakeProcessor],
-  exports: [IntakeProcessor],
+  providers: [AuditLogger, NormalizationService, IntakeProcessor, SplitProcessor],
+  exports: [IntakeProcessor, SplitProcessor],
 })
 export class IngestionWorkerModule {}
 

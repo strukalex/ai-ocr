@@ -73,7 +73,7 @@
   - **Dependencies**: `@my-org/shared-types`
   - **Done**: Test is created but fails (red state) because endpoint does not exist.
 
-- [ ] T063 [US1] Implement monitored storage watcher intake service
+- [X] T063 [US1] Implement monitored storage watcher intake service
   - **Files**: `apps/ingest-watcher/src/main.ts`, `apps/ingest-watcher/src/app/watcher.service.ts`, `apps/ingest-watcher/project.json`
   - **Dependencies**: `@my-org/storage`, `@my-org/queue`, `chokidar` (or equivalent FS watcher/poller)
   - **Done**: Dropping a file into a configured local/S3/SMB path enqueues the same job as `POST /documents`, updates status to "Uploaded", and deduplicates by checksum to satisfy FR-001.
@@ -104,7 +104,7 @@
   - **Dependencies**: `@my-org/queue`
   - **Done**: All processors accept idempotency keys and use standardized exponential backoff/retry profiles; integration tests cover retry and idempotent behavior.
 
-- [ ] T069 [US1] Implement heuristic document splitter
+- [X] T069 [US1] Implement heuristic document splitter
   - **Files**: `apps/workers/ingestion-worker/src/app/processors/split.processor.ts`
   - **Dependencies**: `pdf-lib` (or ghostscript), `@my-org/shared-types`
   - **Instructions**: Detect split points (e.g., separator sheet/barcode/new header), split PDFs into child artifacts, mark parent as "Split", and enqueue intake jobs for each child; ensure child documents inherit linkage to parent/root ids per data model.

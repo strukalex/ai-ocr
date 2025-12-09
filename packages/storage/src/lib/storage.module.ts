@@ -15,7 +15,7 @@ import { STORAGE_OPTIONS_TOKEN } from './storage.tokens';
         defaultBucket: process.env['MINIO_BUCKET'] ?? 'documents',
         sseAlgorithm:
           (process.env['MINIO_SSE_ALGORITHM'] as StorageModuleOptions['sseAlgorithm']) ?? 'AES256',
-        enforceSse: (process.env['MINIO_ENFORCE_SSE'] ?? 'true').toLowerCase() !== 'false',
+        enforceSse: (process.env['MINIO_ENFORCE_SSE'] ?? 'true').toLowerCase() === 'true',
       }),
     },
     StorageService,

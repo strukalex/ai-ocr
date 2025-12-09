@@ -106,5 +106,18 @@ export class StorageService {
       'x-amz-server-side-encryption': this.sseAlgorithm,
     };
   }
+
+  async listObjects(prefix = '', bucket = this.defaultBucket): Promise<string[]> {
+    const objects = this.client.listObjectsV2(bucket, prefix, true);
+    const keys: string[] = [];
+
+    for await (const obj of objects) {
+      if (obj?.name) {
+        keys.push(obj.name);
+      }
+    }
+
+    return keys;
+  }
 }
 
