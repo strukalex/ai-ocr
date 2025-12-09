@@ -9,3 +9,4 @@ export * from './lib/auth/mock-auth.guard';
 export * from './lib/auth/roles.guard';
 export * from './lib/auth/jwt-claims.interface';
 export * from './lib/auth/worker-auth.interface';
+export * from './lib/auth/worker-auth';

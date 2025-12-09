@@ -26,9 +26,9 @@
 - Rationale: Meets FR-007 (versioning + rollback) and FR-010 (configurable rules) by storing rules as JSON in PostgreSQL with rule_version_id, effective_from, and deprecated_at columns. Rules are fetched at runtime and executed via json-rules-engine. Supports custom operators for domain-specific validations (e.g., tax rate calculations) and event-driven architecture.
 - Alternatives considered: Hardcoded TypeScript validation classes (violates FR-007 requirement for dynamic rollback without code deploys), JSON Logic (simpler but lacks event system and custom operator extensibility), Commercial BRMS (overkill, violates OSS preference).
 
-### Decision: Ghostscript (ghostscript4js) + OpenCV for Normalization Pipeline
-- Rationale: Meets FR-032 (PDF/A-2b normalization) and FR-002 (deskew/noise reduction). Ghostscript converts all PDFs to PDF/A-2b standard; OpenCV handles advanced image preprocessing (deskew, denoise, binarize) as explicitly preferred by the Constitution.
-- Alternatives considered: Commercial PDF SDKs (Apryse, Qoppa — violated OSS requirement), Pure JavaScript PDF libs (pdf-lib, pdfjs-dist — lack robust PDF/A conversion), Sharp.js (fast but less robust for complex deskewing/binarization).
+### Decision: Ghostscript (ghostscript4js) + Python OpenCV Microservice for Normalization/Preprocessing
+- Rationale: Meets FR-032 (PDF/A-2b normalization) and FR-002 (deskew/noise reduction). Ghostscript converts all PDFs to PDF/A-2b standard; a dedicated Python microservice with native OpenCV handles deskew/denoise/binarize, invoked via HTTP/REST with async responses delivered via Redis pub/sub, exchanging image artifacts through MinIO so it can scale independently of NestJS workers (which remain free of OpenCV Node bindings).
+- Alternatives considered: Commercial PDF SDKs (Apryse, Qoppa — violated OSS requirement), Pure JavaScript PDF libs (pdf-lib, pdfjs-dist — lack robust PDF/A conversion), Sharp.js (fast but less robust for complex deskewing/binarization), opencv4nodejs/opencv-wasm inside NestJS workers (compilation issues, outdated bindings, and container bloat).
 
 ### Decision: GPT-4o Mini for Field-Level Categorization with Optional Llama 3 Fallback
 - Rationale: Meets FR-027 by using GPT-4o Mini API for low-latency field categorization during the enrichment stage. For high-volume deployments, a fine-tuned Llama 3 model can replace API calls (requires initial training on validated corrections per active learning loop).

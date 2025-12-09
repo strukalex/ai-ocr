@@ -1,111 +1,44 @@
-// @ts-nocheck
-jest.mock('opencv4nodejs', () => {
-  class MockMat {
-    constructor(
-      public rows = 1,
-      public cols = 1,
-      public channels = 1,
-      public data: any = { countNonZero: 20 },
-      public angle = 0,
-    ) {}
-
-    bgrToGray() {
-      return new MockMat(this.rows, this.cols, 1, this.data, this.angle);
-    }
-
-    gaussianBlur() {
-      return this;
-    }
-
-    canny() {
-      return this;
-    }
-
-    houghLinesP() {
-      const theta = (this.angle * Math.PI) / 180;
-      return [[0, 0, Math.cos(theta), Math.sin(theta)]];
-    }
-
-    warpAffine(_matrix: any) {
-      const applied = _matrix?.angle ?? 0;
-      return new MockMat(this.rows, this.cols, this.channels, this.data, this.angle + applied);
-    }
-
-    bilateralFilter() {
-      const reduced = Math.max(Math.round((this.data?.countNonZero ?? 0) * 0.4), 0);
-      return new MockMat(this.rows, this.cols, this.channels, { countNonZero: reduced }, this.angle);
-    }
-
-    adaptiveThreshold() {
-      const normalized = Math.max(Math.round((this.data?.countNonZero ?? 0) * 0.6), 0);
-      return new MockMat(this.rows, this.cols, this.channels, { countNonZero: normalized }, this.angle);
-    }
-
-    threshold() {
-      return this;
-    }
-
-    countNonZero() {
-      return this.data?.countNonZero ?? 0;
-    }
-
-    add(mat: MockMat) {
-      const noise = (mat.data?.countNonZero ?? 0) + (this.data?.countNonZero ?? 0);
-      return new MockMat(this.rows, this.cols, this.channels, { countNonZero: noise }, this.angle);
-    }
-
-    mul(multiplier: number) {
-      return new MockMat(this.rows, this.cols, this.channels, { countNonZero: (this.data?.countNonZero ?? 0) * multiplier }, this.angle);
-    }
-
-    get sizes() {
-      return [this.rows, this.cols];
-    }
-  }
-
-  const cv: any = {
-    CV_8UC1: 1,
-    CV_8UC3: 3,
-    INTER_LINEAR: 1,
-    BORDER_REPLICATE: 1,
-    BORDER_CONSTANT: 0,
-    FONT_HERSHEY_SIMPLEX: 0,
-    Mat: MockMat,
-    Vec: class Vec {
-      constructor(public x?: number, public y?: number, public z?: number) {}
-    },
-    Vec3: class Vec3 {
-      constructor(public x?: number, public y?: number, public z?: number) {}
-    },
-    Size: class Size {
-      constructor(public width: number, public height: number) {}
-    },
-    Point2: class Point2 {
-      constructor(public x: number, public y: number) {}
-    },
-    getRotationMatrix2D: (_center: any, angle: number) => ({ angle }),
-    imdecode: (buf: Buffer) => {
-      const decoded = JSON.parse(buf.toString() || '{}');
-      return new MockMat(200, 400, 3, decoded.data ?? { countNonZero: 20 }, decoded.angle ?? 0);
-    },
-    imencode: (_ext: string, mat: MockMat) => Buffer.from(JSON.stringify({ angle: mat.angle, data: mat.data })),
-    putText: (mat: MockMat) => mat,
-  };
-
-  cv.Mat.rand = (_sizes: number[], _type: number) => new MockMat(200, 400, 1, { countNonZero: 30 }, 0);
-
-  return cv;
-});
-
 import { LoggerService } from '@my-org/observability';
+import { StorageService } from '@my-org/storage';
+import axios from 'axios';
+import Redis from 'ioredis';
+import { EventEmitter } from 'events';
 import { PreprocessingService } from './preprocessing.service';
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const cv = require('opencv4nodejs') as typeof import('opencv4nodejs');
+jest.mock('axios');
 
-describe('PreprocessingService', () => {
+class MockRedis extends EventEmitter {
+  status = 'ready';
+  subscribed: string[] = [];
+
+  async subscribe(channel: string): Promise<void> {
+    this.subscribed.push(channel);
+  }
+
+  async unsubscribe(channel: string): Promise<void> {
+    this.subscribed = this.subscribed.filter((c) => c !== channel);
+  }
+
+  async connect(): Promise<void> {
+    this.status = 'ready';
+  }
+}
+
+let redisInstance: MockRedis;
+
+jest.mock('ioredis', () => {
+  return jest.fn().mockImplementation(() => {
+    redisInstance = new MockRedis();
+    return redisInstance;
+  });
+});
+
+const mockedAxios = axios as jest.Mocked<typeof axios>;
+
+describe('PreprocessingService (Python microservice integration)', () => {
   let service: PreprocessingService;
   let logger: jest.Mocked<LoggerService>;
+  let storage: jest.Mocked<StorageService>;
 
   beforeEach(() => {
     logger = {
@@ -114,68 +47,79 @@ describe('PreprocessingService', () => {
       error: jest.fn(),
     } as unknown as jest.Mocked<LoggerService>;
 
-    service = new PreprocessingService(logger);
+    storage = {
+      getDefaultBucket: jest.fn().mockReturnValue('documents'),
+      uploadObject: jest.fn(),
+      downloadObject: jest.fn(),
+    } as unknown as jest.Mocked<StorageService>;
+
+    mockedAxios.post.mockReset();
+    service = new PreprocessingService(logger, storage);
   });
 
-  const createSkewedTextImage = (angleDeg = 10): import('opencv4nodejs').Mat => {
-    const width = 400;
-    const height = 200;
-    const background = new cv.Mat(height, width, cv.CV_8UC3, new cv.Vec(255, 255, 255));
-    const textPoint = new cv.Point2(40, 120);
-    cv.putText(background, 'Deskew Me', textPoint, cv.FONT_HERSHEY_SIMPLEX, 1.2, new cv.Vec3(0, 0, 0), 3);
+  it('uploads input, dispatches HTTP call, waits for Redis, and returns processed buffer', async () => {
+    const processed = Buffer.from('processed-image');
+    storage.downloadObject.mockResolvedValue(processed);
+    storage.uploadObject.mockResolvedValue();
 
-    const center = new cv.Point2(width / 2, height / 2);
-    const matrix = cv.getRotationMatrix2D(center, angleDeg, 1);
-    return background.warpAffine(matrix, new cv.Size(width, height), cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Vec(255, 255, 255));
-  };
+    mockedAxios.post.mockImplementation(async (_url, body: any) => {
+      setImmediate(() => {
+        redisInstance.emit(
+          'message',
+          'preprocess:results',
+          JSON.stringify({
+            requestId: body.requestId,
+            resultKey: body.resultKey,
+            bucket: body.resultBucket,
+            correctionAngleDeg: -7.25,
+          }),
+        );
+      });
+      return { status: 202 } as any;
+    });
 
-  const estimateSkew = (mat: import('opencv4nodejs').Mat): number => {
-    const gray = mat.channels === 1 ? mat : mat.bgrToGray();
-    const edges = gray.canny(50, 200);
-    const lines = edges.houghLinesP(1, Math.PI / 180, 80, 50, 10) ?? [];
-    const angles = lines
-      .map((l) => Math.atan2(l[3] - l[1], l[2] - l[0]))
-      .map((r) => (r * 180) / Math.PI)
-      .filter((deg) => Math.abs(deg) > 0.5 && Math.abs(deg) < 89);
-    if (!angles.length) return 0;
-    const sorted = [...angles].sort((a, b) => a - b);
-    const mid = Math.floor(sorted.length / 2);
-    return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
-  };
+    const result = await service.preprocess({
+      buffer: Buffer.from('input-image'),
+      filename: 'scan.png',
+      traceId: 'trace-123',
+    });
 
-  const countInkPixels = (mat: import('opencv4nodejs').Mat): number => {
-    const gray = mat.channels === 1 ? mat : mat.bgrToGray();
-    const thresh = gray.threshold(240, 255, cv.THRESH_BINARY);
-    return thresh.countNonZero();
-  };
-
-  it('deskews a skewed image within ±2 degrees', () => {
-    const skewAngle = 12;
-    const skewed = createSkewedTextImage(skewAngle);
-    const inputBuffer = cv.imencode('.png', skewed);
-
-    const result = service.preprocess(inputBuffer);
-    const outputMat = cv.imdecode(result.buffer);
-    const residual = estimateSkew(outputMat);
-
-    expect(Math.abs(residual)).toBeLessThan(2);
-    expect(result.correctionAngleDeg).toBeCloseTo(-skewAngle, 1);
+    expect(storage.uploadObject).toHaveBeenCalledWith(
+      expect.stringContaining('preprocess/input/'),
+      expect.any(Buffer),
+      expect.any(Object),
+      'documents',
+    );
+    expect(mockedAxios.post).toHaveBeenCalledWith(
+      expect.stringContaining('/preprocess'),
+      expect.objectContaining({
+        callbackChannel: 'preprocess:results',
+        resultBucket: 'documents',
+        resultKey: expect.stringContaining('preprocess/output/'),
+      }),
+      expect.objectContaining({ timeout: expect.any(Number) }),
+    );
+    expect(storage.downloadObject).toHaveBeenCalledWith(expect.stringContaining('preprocess/output/'), 'documents');
+    expect(result.buffer).toEqual(processed);
+    expect(result.correctionAngleDeg).toBeCloseTo(-7.25);
   });
 
-  it('reduces noise and binarizes for OCR', () => {
-    const clean = createSkewedTextImage(0).bgrToGray();
-    const noisy = clean.add(cv.Mat.rand(clean.sizes, cv.CV_8UC1).mul(25)); // add mild noise
-    const inputBuffer = cv.imencode('.png', noisy);
+  it('times out when no redis message arrives', async () => {
+    process.env['PREPROCESSOR_TIMEOUT_MS'] = '500';
+    service = new PreprocessingService(logger, storage);
+    mockedAxios.post.mockResolvedValue({ status: 202 } as any);
 
-    const result = service.preprocess(inputBuffer);
-    const outputMat = cv.imdecode(result.buffer);
-
-    const noisyInk = countInkPixels(noisy);
-    const cleanInk = countInkPixels(clean);
-    const processedInk = countInkPixels(outputMat);
-
-    expect(Math.abs(processedInk - cleanInk)).toBeLessThan(Math.abs(noisyInk - cleanInk));
-  });
+    const promise = service.preprocess({ buffer: Buffer.from('input-image'), filename: 'scan.png' });
+    // attach handler immediately to avoid unhandled rejection event
+    promise.catch(() => {});
+    await new Promise((resolve) => setTimeout(resolve, 750));
+    await promise
+      .then(() => {
+        throw new Error('expected timeout rejection');
+      })
+      .catch((err) => {
+        expect(err?.message ?? '').toMatch(/timed out/i);
+      });
+    delete process.env['PREPROCESSOR_TIMEOUT_MS'];
+  }, 10000);
 });
-
-

@@ -10,7 +10,12 @@ import { createHash } from 'crypto';
 import { PreprocessingService } from '../services/preprocessing.service';
 
 jest.mock('../services/preprocessing.service', () => {
-  const preprocess = jest.fn((buffer: Buffer) => ({ buffer, correctionAngleDeg: 0 }));
+  const preprocess = jest.fn((input: any) => ({
+    buffer: input?.buffer ?? input,
+    correctionAngleDeg: 0,
+    objectKey: 'preprocess/output/mock.png',
+    bucket: input?.bucket ?? 'documents',
+  }));
   return {
     PreprocessingService: jest.fn().mockImplementation(() => ({
       preprocess,
@@ -205,7 +210,12 @@ describe('IntakeProcessor', () => {
     };
 
     const preprocessedBuffer = Buffer.from('processed-image-bytes');
-    preprocessing.preprocess.mockReturnValue({ buffer: preprocessedBuffer, correctionAngleDeg: -9.5 });
+    preprocessing.preprocess.mockReturnValue({
+      buffer: preprocessedBuffer,
+      correctionAngleDeg: -9.5,
+      objectKey: 'preprocess/output/mock.png',
+      bucket: 'documents',
+    });
 
     prisma.document.findUnique.mockResolvedValue({
       id: payload.documentId,
@@ -216,7 +226,13 @@ describe('IntakeProcessor', () => {
 
     await processor.handle({ data: payload, id: 'job-img' } as any);
 
-    expect(preprocessing.preprocess).toHaveBeenCalledWith(expect.any(Buffer));
+    expect(preprocessing.preprocess).toHaveBeenCalledWith(
+      expect.objectContaining({
+        buffer: expect.any(Buffer),
+        sourceKey: 'originals/chk-img',
+        bucket: 'documents',
+      }),
+    );
     expect(normalization.toPdfA).toHaveBeenCalledWith(preprocessedBuffer, payload.filename);
     expect(audit.log).toHaveBeenCalledWith(
       expect.objectContaining({

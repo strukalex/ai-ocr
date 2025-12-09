@@ -66,6 +66,25 @@ describe('AuthService', () => {
       expect.objectContaining({ action: 'auth.login', outcome: 'failure' }),
     );
   });
+
+  it('verifies worker tokens signed with WORKER_AUTH_SECRET', async () => {
+    process.env['WORKER_AUTH_SECRET'] = 'worker-secret';
+    const service = new AuthService(auditMock);
+    const token = jwt.sign(
+      { serviceId: 'ingestion-worker', roles: ['operator'] },
+      'worker-secret',
+      { algorithm: 'HS256' },
+    );
+
+    const user = await service.verify(`Bearer ${token}`);
+
+    expect(user.userId).toBe('ingestion-worker');
+    expect(user.roles).toEqual(['operator']);
+    expect(auditMock.log).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'auth.verify', outcome: 'success' }),
+    );
+    delete process.env['WORKER_AUTH_SECRET'];
+  });
 });
 
 

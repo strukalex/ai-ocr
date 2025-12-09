@@ -13,6 +13,7 @@ import { URL } from 'url';
 import { PDFDocument } from 'pdf-lib';
 import { NormalizationService } from '../services/normalization.service';
 import { PreprocessingService } from '../services/preprocessing.service';
+import { ClassifyJobPayload } from './classify.processor';
 
 export interface IntakeJobPayload {
   documentId: string;
@@ -37,9 +38,11 @@ export class IntakeProcessor {
     private readonly queueService: QueueService,
   ) {
     this.splitQueue = this.queueService.createQueue('split');
+    this.classifyQueue = this.queueService.createQueue('classify');
   }
 
   private readonly splitQueue: Queue;
+  private readonly classifyQueue: Queue;
 
   async handle(job: Job<IntakeJobPayload>): Promise<void> {
     const payload = job.data;
@@ -100,12 +103,22 @@ export class IntakeProcessor {
     let preprocessingApplied = false;
     let correctionAngleDeg: number | null = null;
 
+    let preprocessedKey: string | undefined;
+    let preprocessedBucket: string | undefined;
     if (contentType?.startsWith('image/')) {
       try {
-        const result = this.preprocessing.preprocess(originalBuffer);
+        const result = await this.preprocessing.preprocess({
+          buffer: originalBuffer,
+          bucket,
+          sourceKey: originalKey,
+          filename: payload.filename,
+          traceId,
+        });
         bufferForNormalization = result.buffer;
         preprocessingApplied = true;
         correctionAngleDeg = result.correctionAngleDeg;
+        preprocessedKey = result.objectKey;
+        preprocessedBucket = result.bucket;
       } catch (err) {
         this.logger.warn('ingestion.preprocessing_failed', {
           traceId,
@@ -147,7 +160,8 @@ export class IntakeProcessor {
     });
 
     // Opportunistically enqueue split job when the document appears multi-part.
-    if (await this.shouldSplit(originalBuffer, canonicalBuffer ?? undefined)) {
+    const splitEnqueued = await this.shouldSplit(originalBuffer, canonicalBuffer ?? undefined);
+    if (splitEnqueued) {
       await this.queueService.enqueue(
         this.splitQueue,
         'split',
@@ -193,6 +207,8 @@ export class IntakeProcessor {
         sourceChannel: payload.sourceChannel,
         preprocessingApplied,
         correctionAngleDeg,
+        preprocessedKey,
+        preprocessedBucket,
       },
     });
 
@@ -205,6 +221,10 @@ export class IntakeProcessor {
       storedOriginalUri: originalUri,
       canonicalUri,
     });
+
+    if (!splitEnqueued) {
+      await this.enqueueClassification(payload, traceId);
+    }
   }
 
   private async loadOriginalBuffer(payload: IntakeJobPayload, traceId?: string): Promise<Buffer> {
@@ -316,6 +336,32 @@ export class IntakeProcessor {
       // Not a PDF; cannot split heuristically.
       return false;
     }
+  }
+
+  private async enqueueClassification(payload: IntakeJobPayload, traceId?: string): Promise<void> {
+    const classifyPayload: ClassifyJobPayload = {
+      documentId: payload.documentId,
+      filename: payload.filename,
+      metadata: payload.metadata,
+      sourceChannel: payload.sourceChannel as SourceChannel,
+      traceId,
+    };
+
+    await this.queueService.enqueue(
+      this.classifyQueue,
+      'classify',
+      classifyPayload,
+      {
+        jobId: `${payload.documentId}:classify`,
+      },
+    );
+
+    this.logger.info('ingestion.classify_enqueued', {
+      documentId: payload.documentId,
+      traceId,
+      checksum: payload.checksum,
+      sourceChannel: payload.sourceChannel,
+    });
   }
 }
 

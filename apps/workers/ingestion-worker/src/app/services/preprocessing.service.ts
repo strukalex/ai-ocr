@@ -1,96 +1,217 @@
 import { Injectable } from '@nestjs/common';
 import { LoggerService } from '@my-org/observability';
-
-// opencv4nodejs lacks full TS typings, keep imports runtime-safe.
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const cv = require('opencv4nodejs') as typeof import('opencv4nodejs');
+import { StorageService } from '@my-org/storage';
+import axios from 'axios';
+import Redis from 'ioredis';
+import { randomUUID } from 'crypto';
+import { extname } from 'path';
+import { WorkerAuthService } from '../auth/worker-auth.service';
 
 export interface PreprocessResult {
   buffer: Buffer;
   correctionAngleDeg: number;
+  objectKey?: string;
+  bucket?: string;
 }
+
+export interface PreprocessRequest {
+  buffer: Buffer;
+  bucket?: string;
+  sourceKey?: string;
+  filename?: string;
+  traceId?: string;
+}
+
+interface PreprocessResponseMessage {
+  requestId: string;
+  resultKey: string;
+  bucket?: string;
+  correctionAngleDeg?: number;
+  error?: string;
+}
+
+const DEFAULT_TIMEOUT_MS = 30_000;
 
 @Injectable()
 export class PreprocessingService {
-  constructor(private readonly logger: LoggerService) {}
+  private readonly preprocessorUrl: string;
+  private readonly redisUrl: string;
+  private readonly responseChannel: string;
+  private readonly timeoutMs: number;
+  private readonly redis: Redis;
+
+  constructor(
+    private readonly logger: LoggerService,
+    private readonly storage: StorageService,
+    private readonly workerAuth?: WorkerAuthService,
+  ) {
+    this.preprocessorUrl = process.env['PREPROCESSOR_URL'] ?? 'http://localhost:8001';
+    this.redisUrl = process.env['PREPROCESSOR_REDIS_URL'] ?? process.env['REDIS_URL'] ?? 'redis://localhost:6379';
+    this.responseChannel = process.env['PREPROCESSOR_RESPONSE_CHANNEL'] ?? 'preprocess:results';
+    this.timeoutMs = Number(process.env['PREPROCESSOR_TIMEOUT_MS'] ?? DEFAULT_TIMEOUT_MS);
+    this.redis = new Redis(this.redisUrl, { lazyConnect: true });
+  }
 
   /**
-   * Deskew, denoise, and binarize an image using OpenCV.
-   * Returns a PNG buffer along with the applied correction angle (degrees).
+   * Dispatch preprocessing to the Python microservice via HTTP + Redis pub/sub.
+   * Images are exchanged through MinIO to keep Node workers free of OpenCV bindings.
    */
-  preprocess(source: Buffer): PreprocessResult {
-    if (!source || source.length === 0) {
+  async preprocess(request: PreprocessRequest): Promise<PreprocessResult> {
+    const { buffer, bucket: bucketOverride, sourceKey: providedSourceKey, filename, traceId } = request;
+    if (!buffer || buffer.length === 0) {
       throw new Error('Empty image buffer supplied to preprocessing');
     }
 
-    const original = cv.imdecode(source);
-    const { deskewed, angle } = this.deskew(original);
-    const denoised = this.denoise(deskewed);
-    const binarized = this.binarize(denoised);
+    const bucket = bucketOverride ?? this.storage.getDefaultBucket();
+    const requestId = randomUUID();
+    const sourceKey = providedSourceKey ?? `preprocess/input/${requestId}${this.detectExtension(filename)}`;
+    const resultKey = `preprocess/output/${requestId}.png`;
+
+    if (!providedSourceKey) {
+      await this.storage.uploadObject(
+        sourceKey,
+        buffer,
+        {
+          'content-type': this.detectContentType(filename) ?? 'application/octet-stream',
+          'preprocess-request-id': requestId,
+        },
+        bucket,
+      );
+    }
+
+    await this.ensureRedisConnected();
+    await this.redis.subscribe(this.responseChannel);
+
+    const waitForResult = this.waitForResponse(requestId);
+
+    try {
+      const url = `${this.preprocessorUrl.replace(/\/$/, '')}/preprocess`;
+      await axios.post(
+        url,
+        {
+          requestId,
+          sourceBucket: bucket,
+          sourceKey,
+          resultBucket: bucket,
+          resultKey,
+          callbackChannel: this.responseChannel,
+          traceId,
+        },
+        {
+          timeout: this.timeoutMs,
+          headers: this.buildAuthHeaders(),
+        },
+      );
+    } catch (err) {
+      await this.redis.unsubscribe(this.responseChannel).catch(() => undefined);
+      this.logger.warn('preprocess.dispatch_failed', {
+        traceId,
+        error: err instanceof Error ? err.message : 'unknown',
+      });
+      throw err;
+    }
+
+    let message: PreprocessResponseMessage;
+    try {
+      message = await waitForResult;
+    } finally {
+      await this.redis.unsubscribe(this.responseChannel).catch(() => undefined);
+    }
+
+    if (message.error) {
+      this.logger.warn('preprocess.error', { traceId, requestId, error: message.error });
+      throw new Error(message.error);
+    }
+
+    const processedBucket = message.bucket ?? bucket;
+    const processedKey = message.resultKey ?? resultKey;
+
+    const processedBuffer = await this.storage.downloadObject(processedKey, processedBucket);
+
+    this.logger.info('preprocess.completed', {
+      traceId,
+      requestId,
+      processedKey,
+      processedBucket,
+      correctionAngleDeg: message.correctionAngleDeg ?? 0,
+    });
 
     return {
-      buffer: cv.imencode('.png', binarized),
-      correctionAngleDeg: angle,
+      buffer: processedBuffer,
+      correctionAngleDeg: message.correctionAngleDeg ?? 0,
+      objectKey: processedKey,
+      bucket: processedBucket,
     };
   }
 
-  /**
-   * Estimate skew via Hough transform and rotate to horizontal within tolerance.
-   */
-  private deskew(mat: import('opencv4nodejs').Mat): { deskewed: import('opencv4nodejs').Mat; angle: number } {
-    const gray = mat.channels === 1 ? mat : mat.bgrToGray();
-    const blurred = gray.gaussianBlur(new cv.Size(5, 5), 0);
-    const edges = blurred.canny(50, 200);
-    const lines: any = edges.houghLinesP(1, Math.PI / 180, 80, 50, 10) ?? [];
+  private async waitForResponse(requestId: string): Promise<PreprocessResponseMessage> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        cleanup();
+        reject(new Error('Preprocessing response timed out'));
+      }, this.timeoutMs);
 
-    const normalizedLines: number[][] = Array.isArray(lines)
-      ? (lines as any)
-      : (lines.getDataAsArray?.() ?? []).map((row: any) => row[0]);
+      const cleanup = () => {
+        clearTimeout(timer);
+        this.redis.removeListener('message', onMessage);
+      };
 
-    const angles = normalizedLines
-      .map((l) => Math.atan2(l[3] - l[1], l[2] - l[0]))
-      .map((radians) => (radians * 180) / Math.PI)
-      // ignore near-horizontal jitter
-      .filter((deg) => Math.abs(deg) > 0.5 && Math.abs(deg) < 89);
+      const onMessage = (_channel: string, raw: string) => {
+        try {
+          const parsed = JSON.parse(raw) as PreprocessResponseMessage;
+          if (parsed.requestId !== requestId) return;
+          cleanup();
+          resolve(parsed);
+        } catch (err) {
+          cleanup();
+          reject(err);
+        }
+      };
 
-    const medianAngle = this.median(angles) ?? 0;
-    const correctionAngle = -medianAngle;
+      this.redis.on('message', onMessage);
+    });
+  }
 
-    if (Math.abs(correctionAngle) < 0.5) {
-      return { deskewed: mat, angle: 0 };
+  private async ensureRedisConnected(): Promise<void> {
+    if (this.redis.status === 'ready') return;
+    if (this.redis.status === 'connecting') {
+      await new Promise((resolve) => this.redis.once('ready', resolve));
+      return;
     }
-
-    const center = new cv.Point2(mat.cols / 2, mat.rows / 2);
-    const rotationMatrix = cv.getRotationMatrix2D(center, correctionAngle, 1);
-    const rotated = mat.warpAffine(rotationMatrix, new cv.Size(mat.cols, mat.rows), cv.INTER_LINEAR, cv.BORDER_REPLICATE);
-
-    this.logger.info('preprocess.deskew', { detectedAngle: medianAngle, appliedAngle: correctionAngle });
-
-    return { deskewed: rotated, angle: correctionAngle };
+    await this.redis.connect();
   }
 
-  /**
-   * Reduce noise while keeping edges. Bilateral preserves text contours.
-   */
-  private denoise(mat: import('opencv4nodejs').Mat): import('opencv4nodejs').Mat {
-    const gray = mat.channels === 1 ? mat : mat.bgrToGray();
-    return gray.bilateralFilter(9, 75, 75);
+  private detectExtension(filename?: string): string {
+    if (!filename) return '.bin';
+    const ext = extname(filename).toLowerCase();
+    if (ext === '.pdf') return '.pdf';
+    if (ext === '.png') return '.png';
+    if (ext === '.jpg' || ext === '.jpeg') return '.jpg';
+    if (ext === '.tif' || ext === '.tiff') return '.tif';
+    return '.bin';
   }
 
-  /**
-   * Adaptive binarization to make OCR-friendly contrast.
-   */
-  private binarize(mat: import('opencv4nodejs').Mat): import('opencv4nodejs').Mat {
-    const gray = mat.channels === 1 ? mat : mat.bgrToGray();
-    return gray.adaptiveThreshold(255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 35, 10);
+  private detectContentType(filename?: string): string | undefined {
+    const ext = filename ? extname(filename).toLowerCase() : undefined;
+    switch (ext) {
+      case '.pdf':
+        return 'application/pdf';
+      case '.png':
+        return 'image/png';
+      case '.jpg':
+      case '.jpeg':
+        return 'image/jpeg';
+      case '.tif':
+      case '.tiff':
+        return 'image/tiff';
+      default:
+        return undefined;
+    }
   }
 
-  private median(values: number[]): number | null {
-    if (!values.length) return null;
-    const sorted = [...values].sort((a, b) => a - b);
-    const mid = Math.floor(sorted.length / 2);
-    return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  private buildAuthHeaders(): Record<string, string> | undefined {
+    const authHeader = this.workerAuth?.buildAuthHeader();
+    if (!authHeader) return undefined;
+    return { Authorization: authHeader };
   }
 }
-
-

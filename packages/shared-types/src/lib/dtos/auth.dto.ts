@@ -10,3 +10,21 @@ export class AuthLoginRequestDto {
   password!: string;
 }
 
+export class AuthCodeRequestDto {
+  @IsString()
+  @IsNotEmpty()
+  code!: string;
+
+  @IsString()
+  codeVerifier?: string;
+
+  @IsString()
+  redirectUri?: string;
+}
+
+export class AuthBearerExchangeDto {
+  @IsString()
+  @IsNotEmpty()
+  accessToken!: string;
+}
+

@@ -114,13 +114,13 @@
   - **Dependencies**: `ghostscript` CLI, `@my-org/storage`
   - **Done**: Uploaded JPG is converted to PDF/A-2b. **Check**: Verify Ghostscript is used; reject if any other PDF SDK is imported. NormalizationService invokes Ghostscript CLI for PDF/A-2b output and is wired into intake canonical artifact creation with unit tests.
 
-- [X] T058 [US1] Implement OpenCV Preprocessing (Deskew, Denoise, Binarization)
-  - **Files**: `apps/workers/ingestion-worker/src/app/services/preprocessing.service.ts`
-  - **Dependencies**: `opencv4nodejs` (or `opencv-wasm`), `@my-org/storage`
-  - **Instructions**: Implement deskew (Hough transform), noise reduction (Gaussian/bilateral filter), and adaptive binarization for scanned images before OCR. Chain with T013 normalization.
-  - **Done**: Unit test verifies skewed input image is corrected within ±2° and noise-reduced output passes OCR quality check. **Check**: Verify OpenCV is used per constitution; reject proprietary SDKs.
+- [X] T058 [US1] Implement OpenCV Preprocessing via Python Microservice (Deskew, Denoise, Binarization) — reworked to remove Node OpenCV bindings
+  - **Files**: Python preprocessing microservice (FastAPI/Flask) using native OpenCV; `apps/workers/ingestion-worker/src/app/services/preprocessing.service.ts` (HTTP client/integration)
+  - **Dependencies**: Python OpenCV system packages, Redis (pub/sub callback), MinIO SDK, `@my-org/storage` (no `opencv4nodejs`/`opencv-wasm` in NestJS workers)
+  - **Instructions**: Deskew (Hough transform), noise reduction (Gaussian/bilateral filter), and adaptive binarization run inside the dedicated Python service. NestJS workers call it via HTTP/REST, receive async responses over Redis pub/sub, and exchange image artifacts through MinIO. Service scales independently from Node workers; do not vendor OpenCV bindings in Node.
+  - **Done**: Integration test uploads a sample, ensures ingestion worker stores artifacts in MinIO, posts preprocessing request to the Python service, receives async response with correction angle + processed image within SLA, and asserts Node packages contain no OpenCV bindings. **Check**: Verify OpenCV runs in Python microservice per constitution; reject proprietary SDKs and Node OpenCV bindings.
 
-- [ ] T019 [US1] Implement `classify` processor with Tiered Strategy
+- [X] T019 [US1] Implement `classify` processor with Tiered Strategy
   - **Files**: `apps/workers/ingestion-worker/src/app/processors/classify.processor.ts`
   - **Dependencies**: `@my-org/shared-types`, `@my-org/database`
   - **Done**: Classifier supports LayoutLM/LLM calls based on config, falling back to simple keyword matching if configured.
@@ -130,7 +130,7 @@
   - **Dependencies**: `@my-org/shared-types`, `keycloak-connect` (or similar)
   - **Done**: Endpoints are protected by Bearer token; 401 returned if missing.
 
-- [ ] T078 [US1] Implement /auth/login Endpoint & Worker Auth Consistency
+- [X] T078 [US1] Implement /auth/login Endpoint & Worker Auth Consistency
   - **Files**: `apps/api/src/app/auth/auth.controller.ts`, `packages/shared-types/src/lib/auth/worker-auth.interface.ts`, `apps/workers/*/src/app/auth/*`
   - **Dependencies**: `@my-org/shared-types`, `keycloak-connect`, `@my-org/database`
   - **Done**: Login endpoint supports OIDC/bearer/password auth per OpenAPI; workers and webhooks use consistent service-to-service auth patterns matching FR-018 and constitution RBAC requirements.
