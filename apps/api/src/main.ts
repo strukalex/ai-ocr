@@ -16,7 +16,7 @@ import { createSessionTimeoutMiddleware } from './app/security/session.middlewar
 import { createHttpsEnforcementMiddleware } from './app/security/https.middleware';
 
 async function bootstrap() {
-  initTelemetry(process.env['OTEL_SERVICE_NAME'] ?? 'ai-ocr-api');
+  await initTelemetry(process.env['OTEL_SERVICE_NAME'] ?? 'ai-ocr-api');
 
   const { certFile, keyFile } = loadTlsConfig();
   const httpsOptions =

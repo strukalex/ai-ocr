@@ -10,7 +10,7 @@ import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 let sdk: NodeSDK | undefined;
 let meterProvider: MeterProvider | undefined;
 
-export function initTelemetry(serviceName: string): void {
+export async function initTelemetry(serviceName: string): Promise<void> {
   if (sdk) return;
 
   const resource = new Resource({
@@ -40,14 +40,14 @@ export function initTelemetry(serviceName: string): void {
     instrumentations: [getNodeAutoInstrumentations()],
   });
 
-  (async () => {
-    try {
-      await sdk?.start();
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('Failed to start telemetry', err);
-    }
-  })();
+  try {
+    await sdk.start();
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to start telemetry', err);
+    sdk = undefined;
+    meterProvider = undefined;
+  }
 }
 
 export async function shutdownTelemetry(): Promise<void> {

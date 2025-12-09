@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '@my-org/database';
 import {
   IntakeSourceCreateRequestDto,
@@ -37,13 +38,7 @@ export class IntakeSourcesService {
     try {
       const updated = await this.prisma.intakeSource.update({
         where: { id: sourceId },
-        data: {
-          type: payload.type,
-          uri: payload.uri,
-          credentialsRef: payload.credentialsRef,
-          pollingIntervalSeconds: payload.pollingIntervalSeconds,
-          active: payload.active,
-        },
+        data: this.buildUpdateData(payload),
       });
       return this.toDto(updated);
     } catch (err) {
@@ -92,5 +87,21 @@ export class IntakeSourcesService {
       'code' in error &&
       (error as { code?: string }).code === 'P2025'
     );
+  }
+
+  // Only include properties provided by the caller; Prisma treats undefined as an invalid value.
+  private buildUpdateData(
+    payload: IntakeSourceUpdateRequestDto,
+  ): Prisma.IntakeSourceUpdateInput {
+    const data: Prisma.IntakeSourceUpdateInput = {};
+
+    if (payload.type !== undefined) data.type = payload.type;
+    if (payload.uri !== undefined) data.uri = payload.uri;
+    if (payload.credentialsRef !== undefined) data.credentialsRef = payload.credentialsRef;
+    if (payload.pollingIntervalSeconds !== undefined)
+      data.pollingIntervalSeconds = payload.pollingIntervalSeconds;
+    if (payload.active !== undefined) data.active = payload.active;
+
+    return data;
   }
 }
