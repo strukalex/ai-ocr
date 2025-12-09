@@ -1,5 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { Job, JobsOptions, Processor, Queue, QueueOptions, Worker, WorkerOptions } from 'bullmq';
+import {
+  Job,
+  JobsOptions,
+  Processor,
+  Queue,
+  QueueOptions,
+  Worker,
+  WorkerOptions,
+} from 'bullmq';
 import { withDefaultJobOptions } from './retry.config';
 import { QUEUE_OPTIONS_TOKEN } from './queue.tokens';
 
@@ -38,7 +46,25 @@ export class QueueService {
     data: T,
     options?: JobsOptions,
   ): Promise<Job> {
-    return queue.add(name as any, data as any, withDefaultJobOptions(options));
+    const jobOptions = withDefaultJobOptions(options);
+
+    /**
+     * Idempotency: reuse an existing active job with the same id. If the prior job
+     * is terminal (failed/completed), enqueue a fresh one so manual replays are not
+     * blocked by old entries.
+     */
+    if (jobOptions.jobId) {
+      const existing = await queue.getJob(jobOptions.jobId);
+      if (existing) {
+        const state = await existing.getState();
+        const reusableStates = new Set(['waiting', 'active', 'delayed', 'paused']);
+        if (reusableStates.has(state)) {
+          return existing as Job;
+        }
+      }
+    }
+
+    return queue.add(name as any, data as any, jobOptions);
   }
 
   private buildBaseOptions(): QueueOptions {

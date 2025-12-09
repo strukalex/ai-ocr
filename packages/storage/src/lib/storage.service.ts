@@ -51,13 +51,7 @@ export class StorageService {
     bucket = this.defaultBucket,
   ): Promise<void> {
     await this.ensureBucket(bucket);
-    const finalMetadata =
-      this.enforceSse && this.sseAlgorithm
-        ? {
-            ...metadata,
-            'x-amz-server-side-encryption': this.sseAlgorithm,
-          }
-        : metadata;
+    const finalMetadata = this.buildMetadata(metadata);
 
     await this.client.putObject(bucket, objectName, content, content.length, finalMetadata);
   }
@@ -72,6 +66,21 @@ export class StorageService {
       chunks.push(chunk as Buffer);
     }
     return Buffer.concat(chunks);
+  }
+
+  private buildMetadata(metadata?: ItemBucketMetadata): ItemBucketMetadata | undefined {
+    if (!this.enforceSse) {
+      return metadata;
+    }
+
+    if (!this.sseAlgorithm) {
+      throw new Error('SSE algorithm must be provided when enforceSse is enabled');
+    }
+
+    return {
+      ...metadata,
+      'x-amz-server-side-encryption': this.sseAlgorithm,
+    };
   }
 }
 

@@ -99,7 +99,7 @@
   - **Instructions**: Persist the uploaded source file immutably with checksum (e.g., SHA-256) and object-lock/write-once semantics where supported; generate canonical PDF/A-2b separately without overwriting the original; emit audit linking original + canonical artifact ids, checksums, and locations; enforce checksum dedupe before enqueue; validate both artifacts are accessible for downstream steps.
   - **Done**: Integration test uploads a JPG → original stored with checksum, canonical PDF/A created under a different key, audit log records both ids/checksums, and duplicate upload is deduped by checksum.
 
-- [ ] T089 [ARCH] Idempotency Keys & Backoff Profiles
+- [X] T089 [ARCH] Idempotency Keys & Backoff Profiles
   - **Files**: `packages/queue/src/lib/queue.service.ts`, `packages/queue/src/lib/retry.config.ts`, `apps/workers/*/src/app/processors/*.ts`
   - **Dependencies**: `@my-org/queue`
   - **Done**: All processors accept idempotency keys and use standardized exponential backoff/retry profiles; integration tests cover retry and idempotent behavior.
@@ -135,7 +135,7 @@
   - **Dependencies**: `@my-org/shared-types`, `keycloak-connect`, `@my-org/database`
   - **Done**: Login endpoint supports OIDC/bearer/password auth per OpenAPI; workers and webhooks use consistent service-to-service auth patterns matching FR-018 and constitution RBAC requirements.
 
-- [ ] T090 [SEC] Enforce At-Rest Encryption for Storage/DB
+- [X] T090 [SEC] Enforce At-Rest Encryption for Storage/DB
   - **Files**: `packages/storage/src/lib/storage.service.ts`, `apps/api/src/config/security.config.ts`, `docs/ops/security.md`
   - **Dependencies**: `@my-org/storage`
   - **Done**: MinIO uploads use SSE (AES-256) by default; DB encryption/TDE requirements documented and enabled per environment; tests/ops checklist verify encryption flags.
