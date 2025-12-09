@@ -1,9 +1,11 @@
-import { Body, Controller, HttpCode, Post } from '@nestjs/common';
+import { Body, Controller, HttpCode, Post, Req } from '@nestjs/common';
 import {
   DocumentIngestRequestDto,
   DocumentIngestResponseDto,
 } from '@my-org/shared-types';
 import { DocumentsService } from './documents.service';
+import { Request } from 'express';
+import { UserContext } from '@my-org/shared-types';
 
 @Controller('documents')
 export class DocumentsController {
@@ -12,8 +14,10 @@ export class DocumentsController {
   @Post()
   @HttpCode(201)
   async ingest(
+    @Req() req: Request & { user?: UserContext },
     @Body() body: DocumentIngestRequestDto,
   ): Promise<DocumentIngestResponseDto> {
-    return this.documentsService.ingest(body);
+    const traceIdFromInterceptor = (req as any).traceId;
+    return this.documentsService.ingest(body, req.user?.userId, traceIdFromInterceptor);
   }
 }

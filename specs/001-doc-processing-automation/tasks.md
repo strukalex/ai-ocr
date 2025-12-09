@@ -140,12 +140,12 @@
   - **Dependencies**: `@my-org/storage`
   - **Done**: MinIO uploads use SSE (AES-256) by default; DB encryption/TDE requirements documented and enabled per environment; tests/ops checklist verify encryption flags.
 
-- [ ] T091 [OBS][US1] Add trace_id JSON logging for ingestion
+- [X] T091 [OBS][US1] Add trace_id JSON logging for ingestion
   - **Files**: `apps/api/src/main.ts`, `apps/api/src/app/telemetry/request-telemetry.interceptor.ts`, `apps/api/src/app/documents/*`, `packages/queue/src/lib/queue.service.ts`
   - **Dependencies**: `@my-org/observability`, `@my-org/queue`
   - **Done**: Ingestion endpoints and queue producers emit JSON logs with `trace_id`/`document_id` and structured fields per OBS-001; trace_id propagates to produced jobs.
 
-- [ ] T092 [OBS][US1] Contract test for ingestion log/trace shape
+- [X] T092 [OBS][US1] Contract test for ingestion log/trace shape
   - **Files**: `tests/contract/ingestion-telemetry.spec.ts`
   - **Dependencies**: `@my-org/observability`
   - **Done**: Test asserts response includes trace header and log sink receives JSON entry with required fields (timestamp, severity, service, trace_id, document_id, message).

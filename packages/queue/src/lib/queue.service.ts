@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Job, JobsOptions, Processor, Queue, QueueOptions, Worker, WorkerOptions } from 'bullmq';
+import { withDefaultJobOptions } from './retry.config';
 import { QUEUE_OPTIONS_TOKEN } from './queue.tokens';
 
 export interface QueueModuleOptions {
@@ -37,7 +38,7 @@ export class QueueService {
     data: T,
     options?: JobsOptions,
   ): Promise<Job> {
-    return queue.add(name as any, data as any, options);
+    return queue.add(name as any, data as any, withDefaultJobOptions(options));
   }
 
   private buildBaseOptions(): QueueOptions {

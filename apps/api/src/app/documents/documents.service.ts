@@ -7,19 +7,27 @@ import {
 import { DocumentStatus } from '@my-org/shared-types';
 import { Queue } from 'bullmq';
 import { QueueService } from '@my-org/queue';
+import { LoggerService } from '@my-org/observability';
+import { context, trace } from '@opentelemetry/api';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class DocumentsService {
   constructor(
     private readonly prisma: PrismaService,
-    queueService: QueueService,
+    private readonly queueService: QueueService,
+    private readonly logger: LoggerService,
   ) {
     this.intakeQueue = queueService.createQueue('intake');
   }
 
   private readonly intakeQueue: Queue;
 
-  async ingest(request: DocumentIngestRequestDto): Promise<DocumentIngestResponseDto> {
+  async ingest(
+    request: DocumentIngestRequestDto,
+    actorId?: string,
+    traceIdFromRequest?: string | string[],
+  ): Promise<DocumentIngestResponseDto> {
     const created = await this.prisma.document.create({
       data: {
         sourceChannel: request.sourceChannel,
@@ -42,14 +50,38 @@ export class DocumentsService {
       },
     });
 
-    await this.intakeQueue.add('intake', {
+    const activeSpan = trace.getSpan(context.active());
+    const traceId =
+      (Array.isArray(traceIdFromRequest) ? traceIdFromRequest[0] : traceIdFromRequest) ??
+      activeSpan?.spanContext().traceId ??
+      randomUUID().replace(/-/g, '');
+
+    await this.queueService.enqueue(
+      this.intakeQueue,
+      'intake',
+      {
+        documentId: created.id,
+        sourceChannel: request.sourceChannel,
+        checksum: request.checksum,
+        originalUri: request.originalUri,
+        filename: request.filename,
+        idempotencyKey: request.idempotencyKey,
+        metadata: request.metadata,
+        traceId,
+      },
+      {
+        jobId: request.idempotencyKey ?? request.checksum,
+      },
+    );
+
+    this.logger.info('ingestion.intake_enqueued', {
       documentId: created.id,
-      sourceChannel: request.sourceChannel,
       checksum: request.checksum,
-      originalUri: request.originalUri,
-      filename: request.filename,
       idempotencyKey: request.idempotencyKey,
-      metadata: request.metadata,
+      sourceChannel: request.sourceChannel,
+      traceId,
+      user_id: actorId ?? 'unknown',
+      actorId,
     });
 
     return {

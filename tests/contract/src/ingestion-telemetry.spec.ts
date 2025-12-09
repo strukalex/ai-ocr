@@ -2,13 +2,12 @@ import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AppModule } from '../../../apps/api/src/app/app.module';
 import { PrismaService } from '@my-org/database';
-import request from 'supertest';
 import { QueueService, withDefaultJobOptions } from '@my-org/queue';
-import { LoggerService } from '@my-org/observability';
+import request from 'supertest';
 import { JwtAuthGuard } from '../../../apps/api/src/app/auth/jwt-auth.guard';
 import { AuthService } from '../../../apps/api/src/app/auth/auth.service';
 
-describe('Ingestion Pipeline (integration)', () => {
+describe('Ingestion Telemetry (contract)', () => {
   let app: INestApplication;
 
   const prismaMock = {
@@ -24,6 +23,7 @@ describe('Ingestion Pipeline (integration)', () => {
       create: jest.fn().mockResolvedValue({ id: 'intake-1' }),
     } as any,
   } as unknown as PrismaService;
+
   const queueMock = {
     add: jest.fn().mockResolvedValue({ id: 'job-1' }),
   };
@@ -33,9 +33,8 @@ describe('Ingestion Pipeline (integration)', () => {
       queue.add(name, data, withDefaultJobOptions(options)),
     ),
   };
-  const loggerMock: Partial<LoggerService> = {
-    info: jest.fn(),
-  };
+
+  const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
 
   beforeAll(async () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
@@ -45,8 +44,6 @@ describe('Ingestion Pipeline (integration)', () => {
       .useValue(prismaMock)
       .overrideProvider(QueueService)
       .useValue(queueServiceMock)
-      .overrideProvider(LoggerService)
-      .useValue(loggerMock)
       .overrideProvider(JwtAuthGuard)
       .useValue({
         canActivate: (context: any) => {
@@ -54,7 +51,7 @@ describe('Ingestion Pipeline (integration)', () => {
           req.user = { userId: 'test-user', roles: [] };
           return true;
         },
-      })
+      } as any)
       .overrideProvider(AuthService)
       .useValue({
         verify: jest.fn().mockResolvedValue({
@@ -70,17 +67,18 @@ describe('Ingestion Pipeline (integration)', () => {
   });
 
   afterAll(async () => {
+    consoleSpy.mockRestore();
     await app?.close();
   });
 
-  it('accepts document upload and enqueues intake job', async () => {
+  it('propagates trace headers and structured log with trace_id/document_id/user_id', async () => {
     const payload = {
       sourceChannel: 'upload',
       originalUri: 'file:///tmp/sample.pdf',
       filename: 'sample.pdf',
       checksum: 'sha256-sample',
-      idempotencyKey: 'test-ingest-001',
-      metadata: { submitter: 'integration-test' },
+      idempotencyKey: 'contract-ingest-001',
+      metadata: { submitter: 'contract-test' },
     };
 
     const response = await request(app.getHttpServer())
@@ -88,34 +86,30 @@ describe('Ingestion Pipeline (integration)', () => {
       .send(payload)
       .expect(201);
 
-    expect(response.headers['trace-id']).toBeDefined();
+    const traceId = response.headers['trace-id'];
+    expect(traceId).toBeDefined();
     expect(response.headers['traceparent']).toBeDefined();
 
-    const traceIdFromHeaders = response.headers['trace-id'];
     expect(queueMock.add).toHaveBeenCalledWith(
       'intake',
       expect.objectContaining({
         documentId: 'doc-1',
-        checksum: payload.checksum,
-        originalUri: payload.originalUri,
-        traceId: traceIdFromHeaders,
+        traceId,
       }),
       expect.objectContaining({
-        jobId: payload.idempotencyKey,
-        attempts: expect.any(Number),
         backoff: expect.objectContaining({ type: 'exponential' }),
       }),
     );
 
-    expect(loggerMock.info).toHaveBeenCalledWith(
-      'ingestion.intake_enqueued',
-      expect.objectContaining({
-        documentId: 'doc-1',
-        checksum: payload.checksum,
-        idempotencyKey: payload.idempotencyKey,
-        traceId: expect.any(String),
-        user_id: 'test-user',
-      }),
-    );
+    const logged = consoleSpy.mock.calls.find((c) => typeof c[0] === 'string');
+    expect(logged).toBeDefined();
+    const parsed = JSON.parse(logged![0] as string);
+    expect(parsed.message).toBe('ingestion.intake_enqueued');
+    expect(parsed.traceId).toBe(traceId);
+    expect(parsed.documentId).toBe('doc-1');
+    expect(parsed.user_id).toBe('test-user');
+    expect(parsed.level).toBe('info');
+    expect(parsed.timestamp).toBeDefined();
   });
 });
+

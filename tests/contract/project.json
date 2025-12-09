@@ -1,0 +1,19 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "contract-tests",
+  "projectType": "application",
+  "root": "tests/contract",
+  "sourceRoot": "tests/contract/src",
+  "targets": {
+    "test": {
+      "executor": "@nx/jest:jest",
+      "outputs": ["{workspaceRoot}/coverage/tests/contract"],
+      "options": {
+        "jestConfig": "tests/contract/jest.config.ts",
+        "passWithNoTests": false
+      }
+    }
+  },
+  "tags": []
+}
+
