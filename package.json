@@ -9,6 +9,7 @@
     "start": "nx serve",
     "build": "nx build",
     "test": "nx run-many --target=test --all --exclude=ai-ocr --output-style=stream --skip-nx-cache",
+    "test:all": "PREPROCESSOR_PYTHON_BIN=./.venv-preprocess/bin/python nx run-many --target=test --all --exclude=ai-ocr --output-style=stream --skip-nx-cache",
     "test:coverage": "nx run-many --target=test --all --exclude=ai-ocr --runInBand --coverage",
     "test:coverage:fresh": "nx run-many --target=test --all --exclude=ai-ocr --runInBand --coverage --skip-nx-cache",
     "coverage:merge": "node tools/merge-coverage.js",
