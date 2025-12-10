@@ -38,18 +38,17 @@ export class PreprocessingService {
   private readonly redisUrl: string;
   private readonly responseChannel: string;
   private readonly timeoutMs: number;
-  private readonly redis: Redis;
 
   constructor(
     private readonly logger: LoggerService,
     private readonly storage: StorageService,
-    private readonly workerAuth?: WorkerAuthService,
+    private readonly workerAuth: WorkerAuthService,
   ) {
     this.preprocessorUrl = process.env['PREPROCESSOR_URL'] ?? 'http://localhost:8001';
-    this.redisUrl = process.env['PREPROCESSOR_REDIS_URL'] ?? process.env['REDIS_URL'] ?? 'redis://localhost:6379';
+    this.redisUrl =
+      process.env['PREPROCESSOR_REDIS_URL'] ?? process.env['REDIS_URL'] ?? 'redis://localhost:6379';
     this.responseChannel = process.env['PREPROCESSOR_RESPONSE_CHANNEL'] ?? 'preprocess:results';
     this.timeoutMs = Number(process.env['PREPROCESSOR_TIMEOUT_MS'] ?? DEFAULT_TIMEOUT_MS);
-    this.redis = new Redis(this.redisUrl, { lazyConnect: true });
   }
 
   /**
@@ -79,10 +78,11 @@ export class PreprocessingService {
       );
     }
 
-    await this.ensureRedisConnected();
-    await this.redis.subscribe(this.responseChannel);
+    const redis = this.createRedisClient();
+    const callbackChannel = `${this.responseChannel}:${requestId}`;
+    await redis.subscribe(callbackChannel);
 
-    const waitForResult = this.waitForResponse(requestId);
+    const waitForResult = this.waitForResponse(redis, callbackChannel, requestId);
 
     try {
       const url = `${this.preprocessorUrl.replace(/\/$/, '')}/preprocess`;
@@ -94,7 +94,7 @@ export class PreprocessingService {
           sourceKey,
           resultBucket: bucket,
           resultKey,
-          callbackChannel: this.responseChannel,
+          callbackChannel,
           traceId,
         },
         {
@@ -103,7 +103,8 @@ export class PreprocessingService {
         },
       );
     } catch (err) {
-      await this.redis.unsubscribe(this.responseChannel).catch(() => undefined);
+      await redis.unsubscribe(callbackChannel).catch(() => undefined);
+      await redis.quit().catch(() => undefined);
       this.logger.warn('preprocess.dispatch_failed', {
         traceId,
         error: err instanceof Error ? err.message : 'unknown',
@@ -115,7 +116,8 @@ export class PreprocessingService {
     try {
       message = await waitForResult;
     } finally {
-      await this.redis.unsubscribe(this.responseChannel).catch(() => undefined);
+      await redis.unsubscribe(callbackChannel).catch(() => undefined);
+      await redis.quit().catch(() => undefined);
     }
 
     if (message.error) {
@@ -144,7 +146,11 @@ export class PreprocessingService {
     };
   }
 
-  private async waitForResponse(requestId: string): Promise<PreprocessResponseMessage> {
+  private async waitForResponse(
+    redis: Redis,
+    channel: string,
+    requestId: string,
+  ): Promise<PreprocessResponseMessage> {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         cleanup();
@@ -153,7 +159,7 @@ export class PreprocessingService {
 
       const cleanup = () => {
         clearTimeout(timer);
-        this.redis.removeListener('message', onMessage);
+        redis.removeListener('message', onMessage);
       };
 
       const onMessage = (_channel: string, raw: string) => {
@@ -168,17 +174,12 @@ export class PreprocessingService {
         }
       };
 
-      this.redis.on('message', onMessage);
+      redis.on('message', onMessage);
     });
   }
 
-  private async ensureRedisConnected(): Promise<void> {
-    if (this.redis.status === 'ready') return;
-    if (this.redis.status === 'connecting') {
-      await new Promise((resolve) => this.redis.once('ready', resolve));
-      return;
-    }
-    await this.redis.connect();
+  private createRedisClient(): Redis {
+    return new Redis(this.redisUrl, { lazyConnect: true });
   }
 
   private detectExtension(filename?: string): string {
@@ -209,9 +210,11 @@ export class PreprocessingService {
     }
   }
 
-  private buildAuthHeaders(): Record<string, string> | undefined {
-    const authHeader = this.workerAuth?.buildAuthHeader();
-    if (!authHeader) return undefined;
+  private buildAuthHeaders(): Record<string, string> {
+    const authHeader = this.workerAuth.buildAuthHeader();
+    if (!authHeader) {
+      throw new Error('Worker auth token is required for preprocessing dispatch');
+    }
     return { Authorization: authHeader };
   }
 }

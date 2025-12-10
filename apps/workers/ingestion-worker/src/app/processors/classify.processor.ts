@@ -72,13 +72,20 @@ export class ClassifyProcessor {
     const tier = await this.resolveTier(document.processingProfileId);
     const { result, ordered } = await this.runStrategies({ payload, tier });
     const ambiguous = this.isAmbiguous(result, ordered);
+    const isUnknown = result.type === 'unknown';
 
     const secondBestType = ordered[1]?.type;
     await this.prisma.document.update({
       where: { id: payload.documentId },
       data: {
-        status: ambiguous ? DocumentStatus.PendingReview : DocumentStatus.Classified,
-        stateReason: ambiguous
+        status: isUnknown
+          ? DocumentStatus.Exception
+          : ambiguous
+          ? DocumentStatus.PendingReview
+          : DocumentStatus.Classified,
+        stateReason: isUnknown
+          ? 'Unknown document type; requires configuration'
+          : ambiguous
           ? `Classification requires confirmation (${result.type}${
               secondBestType ? ` vs ${secondBestType}` : ''
             } score ${result.confidence.toFixed(2)} < ${this.threshold.toFixed(2)} or ambiguous)`
@@ -99,10 +106,12 @@ export class ClassifyProcessor {
         confidence: result.confidence,
         tier,
         ambiguous: ambiguous ? result.ambiguousCandidates : [],
+        signals: ordered.slice(0, 3),
       },
     });
 
-    this.logger.info('ingestion.classified', {
+    const logMethod = isUnknown ? this.logger.warn.bind(this.logger) : this.logger.info.bind(this.logger);
+    logMethod('ingestion.classified', {
       documentId: payload.documentId,
       traceId,
       confidence: result.confidence,

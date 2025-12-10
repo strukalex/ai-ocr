@@ -66,20 +66,81 @@ export class IntakeProcessor {
     const canonicalKey = `canonical/${payload.checksum}.pdfa`;
     const originalUri = document.originalUri ?? `s3://${bucket}/${originalKey}`;
     const canonicalUri = `s3://${bucket}/${canonicalKey}`;
+    const allowChecksumMismatch = process.env['ALLOW_CHECKSUM_MISMATCH'] === 'true';
 
     // Resolve and validate the original content before persisting.
     const originalBuffer = await this.loadOriginalBuffer(payload, traceId);
     const detectedOriginalChecksum = this.computeSha256(originalBuffer);
     const checksumToPersist = payload.checksum || detectedOriginalChecksum;
 
+    if (!originalBuffer || originalBuffer.length === 0) {
+      await this.prisma.document.update({
+        where: { id: payload.documentId },
+        data: {
+          status: DocumentStatus.Failed,
+          stateReason: 'Original content unavailable',
+        },
+      });
+
+      await this.audit.log({
+        action: 'ingestion.intake_failed',
+        actorId: 'system',
+        outcome: 'failure',
+        traceId,
+        documentId: payload.documentId,
+        metadata: {
+          reason: 'missing_original',
+          originalUri: payload.originalUri,
+          sourceChannel: payload.sourceChannel,
+        },
+      });
+
+      this.logger.warn('ingestion.intake_missing_content', {
+        traceId,
+        documentId: payload.documentId,
+        originalUri: payload.originalUri,
+        sourceChannel: payload.sourceChannel,
+      });
+
+      return;
+    }
+
     if (payload.checksum && payload.checksum !== detectedOriginalChecksum) {
-      this.logger.warn('ingestion.intake_checksum_mismatch', {
+      const metadata = {
         traceId,
         documentId: payload.documentId,
         expected: payload.checksum,
         detected: detectedOriginalChecksum,
         sourceChannel: payload.sourceChannel,
-      });
+      };
+
+      this.logger.warn('ingestion.intake_checksum_mismatch', metadata);
+
+      if (!allowChecksumMismatch) {
+        await this.prisma.document.update({
+          where: { id: payload.documentId },
+          data: {
+            status: DocumentStatus.Failed,
+            stateReason: 'Checksum mismatch',
+          },
+        });
+
+        await this.audit.log({
+          action: 'ingestion.intake_failed',
+          actorId: 'system',
+          outcome: 'failure',
+          traceId,
+          documentId: payload.documentId,
+          metadata: {
+            reason: 'checksum_mismatch',
+            expected: payload.checksum,
+            detected: detectedOriginalChecksum,
+            sourceChannel: payload.sourceChannel,
+          },
+        });
+
+        return;
+      }
     }
 
     // Preserve original immutably and dedupe by checksum.

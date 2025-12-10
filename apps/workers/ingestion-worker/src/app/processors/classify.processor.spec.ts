@@ -59,7 +59,7 @@ describe('ClassifyProcessor', () => {
     );
   });
 
-  it('routes low-confidence items to PendingReview with state reason', async () => {
+  it('routes unknown/low-confidence items to Exception with state reason', async () => {
     prisma.document.findUnique.mockResolvedValue({
       id: 'doc-2',
       status: DocumentStatus.Uploaded,
@@ -82,14 +82,14 @@ describe('ClassifyProcessor', () => {
       expect.objectContaining({
         where: { id: 'doc-2' },
         data: expect.objectContaining({
-          status: DocumentStatus.PendingReview,
+          status: DocumentStatus.Exception,
           classificationType: 'unknown',
         }),
       }),
     );
 
     const updateCall = prisma.document.update.mock.calls[0]?.[0];
-    expect(updateCall.data.stateReason).toContain('requires confirmation');
+    expect(updateCall.data.stateReason).toContain('Unknown document type');
   });
 });
 

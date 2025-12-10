@@ -71,7 +71,7 @@
 - [X] T010 [US1] **Create Integration Test for Ingestion Pipeline**
   - **Files**: `tests/integration/ingestion.spec.ts`
   - **Dependencies**: `@my-org/shared-types`
-  - **Done**: Test is created but fails (red state) because endpoint does not exist.
+  - **Done**: Integration test now covers upload happy path, checksum dedupe, and failure handling (missing originals, checksum mismatch) with audit/log assertions; endpoint passes.
 
 - [X] T063 [US1] Implement monitored storage watcher intake service
   - **Files**: `apps/ingest-watcher/src/main.ts`, `apps/ingest-watcher/src/app/watcher.service.ts`, `apps/ingest-watcher/project.json`

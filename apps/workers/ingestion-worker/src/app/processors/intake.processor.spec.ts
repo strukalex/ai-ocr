@@ -79,14 +79,16 @@ describe('IntakeProcessor', () => {
   });
 
   it('updates document and intake request, emits audit/log', async () => {
+    const rawBuffer = Buffer.from('hello world');
+    const rawChecksum = createHash('sha256').update(rawBuffer).digest('hex');
     const payload: IntakeJobPayload = {
       documentId: 'doc-1',
-      checksum: 'chk-123',
+      checksum: rawChecksum,
       originalUri: 'file:///tmp/sample.pdf',
       idempotencyKey: 'idem-1',
       sourceChannel: 'upload',
       traceId: 'trace-1',
-      metadata: { rawContentBase64: Buffer.from('hello world').toString('base64') },
+      metadata: { rawContentBase64: rawBuffer.toString('base64') },
     };
 
     prisma.document.findUnique.mockResolvedValue({
@@ -108,8 +110,8 @@ describe('IntakeProcessor', () => {
       data: {
         status: DocumentStatus.Uploaded,
         stateReason: null,
-        originalUri: 's3://documents/originals/chk-123',
-        canonicalUri: 's3://documents/canonical/chk-123.pdfa',
+        originalUri: `s3://documents/originals/${rawChecksum}`,
+        canonicalUri: `s3://documents/canonical/${rawChecksum}.pdfa`,
       },
     });
 
@@ -119,13 +121,13 @@ describe('IntakeProcessor', () => {
     });
 
     expect(storage.uploadObject).toHaveBeenCalledWith(
-      'originals/chk-123',
+      `originals/${rawChecksum}`,
       expect.any(Buffer),
       expect.objectContaining({ 'checksum-sha256': payload.checksum }),
       'documents',
     );
     expect(storage.uploadObject).toHaveBeenCalledWith(
-      'canonical/chk-123.pdfa',
+      `canonical/${rawChecksum}.pdfa`,
       expect.any(Buffer),
       expect.objectContaining({ 'checksum-sha256': canonicalChecksum }),
       'documents',
@@ -165,13 +167,15 @@ describe('IntakeProcessor', () => {
   it('downloads http originals instead of writing empty content', async () => {
     const payload: IntakeJobPayload = {
       documentId: 'doc-http',
-      checksum: 'chk-http',
+      checksum: '',
       originalUri: 'https://example.com/doc.pdf',
       filename: 'doc.pdf',
       sourceChannel: 'upload',
     };
 
     const httpBuffer = Buffer.from('remote-content');
+    const httpChecksum = createHash('sha256').update(httpBuffer).digest('hex');
+    payload.checksum = httpChecksum;
     mockedAxios.get.mockResolvedValue({ data: httpBuffer } as any);
     prisma.document.findUnique.mockResolvedValue({
       id: payload.documentId,
@@ -198,14 +202,16 @@ describe('IntakeProcessor', () => {
   });
 
   it('preprocesses images before normalization and records angle', async () => {
+    const rawImage = Buffer.from('raw-image-bytes');
+    const rawImageChecksum = createHash('sha256').update(rawImage).digest('hex');
     const payload: IntakeJobPayload = {
       documentId: 'doc-img',
-      checksum: 'chk-img',
+      checksum: rawImageChecksum,
       originalUri: 'file:///tmp/scan.png',
       filename: 'scan.png',
       sourceChannel: 'upload',
       metadata: {
-        rawContentBase64: Buffer.from('raw-image-bytes').toString('base64'),
+        rawContentBase64: rawImage.toString('base64'),
       },
     };
 
@@ -229,7 +235,7 @@ describe('IntakeProcessor', () => {
     expect(preprocessing.preprocess).toHaveBeenCalledWith(
       expect.objectContaining({
         buffer: expect.any(Buffer),
-        sourceKey: 'originals/chk-img',
+        sourceKey: `originals/${rawImageChecksum}`,
         bucket: 'documents',
       }),
     );

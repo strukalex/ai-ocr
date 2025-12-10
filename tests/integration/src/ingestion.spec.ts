@@ -10,6 +10,11 @@ import { AuthService } from '../../../apps/api/src/app/auth/auth.service';
 import { mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { IntakeProcessor } from '../../../apps/workers/ingestion-worker/src/app/processors/intake.processor';
+import { PreprocessingService } from '../../../apps/workers/ingestion-worker/src/app/services/preprocessing.service';
+import { NormalizationService } from '../../../apps/workers/ingestion-worker/src/app/services/normalization.service';
+import { StorageService } from '@my-org/storage';
+import { AuditLogger } from '@my-org/observability';
 
 process.env['DB_AT_REST_ENCRYPTED'] = 'true';
 
@@ -43,6 +48,10 @@ describe('Ingestion Pipeline (integration)', () => {
   const loggerMock: Partial<LoggerService> = {
     info: jest.fn(),
   };
+  const auditMock: Partial<AuditLogger> = {
+    log: jest.fn(),
+  };
+  loggerMock.warn = jest.fn();
 
   beforeAll(async () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
@@ -163,5 +172,120 @@ describe('Ingestion Pipeline (integration)', () => {
 
     expect(duplicateResponse.body.documentId).toBe('doc-1');
     expect(queueMock.add).not.toHaveBeenCalled();
+  });
+
+  describe('IntakeProcessor failure handling', () => {
+    const storageMock = {
+      getDefaultBucket: jest.fn().mockReturnValue('documents'),
+      objectExists: jest.fn(),
+      uploadObject: jest.fn(),
+      downloadObject: jest.fn(),
+    } as unknown as jest.Mocked<StorageService>;
+
+    const preprocessingMock = {
+      preprocess: jest.fn(),
+    } as unknown as jest.Mocked<PreprocessingService>;
+
+    const normalizationMock = {
+      toPdfA: jest.fn(),
+    } as unknown as jest.Mocked<NormalizationService>;
+
+    const queueService = {
+      createQueue: jest.fn().mockReturnValue({} as any),
+      enqueue: jest.fn(),
+    } as unknown as QueueService;
+
+    const basePayload = {
+      documentId: 'doc-123',
+      checksum: 'declared-checksum',
+      originalUri: undefined,
+      filename: 'missing.pdf',
+      idempotencyKey: 'idem-1',
+      sourceChannel: 'upload',
+    };
+
+    beforeEach(() => {
+      jest.resetAllMocks();
+      prismaMock.document.findUnique = jest.fn().mockResolvedValue({
+        id: basePayload.documentId,
+        originalUri: null,
+      });
+      prismaMock.document.update = jest.fn().mockResolvedValue({});
+      auditMock.log = jest.fn().mockResolvedValue(undefined);
+    });
+
+    it('marks document Failed when original content is unavailable', async () => {
+      const processor = new IntakeProcessor(
+        prismaMock as any,
+        auditMock as any,
+        loggerMock as any,
+        storageMock,
+        preprocessingMock,
+        normalizationMock,
+        queueService,
+      );
+
+      await processor.handle({
+        data: {
+          ...basePayload,
+          originalUri: undefined,
+        },
+      } as any);
+
+      expect(prismaMock.document.update).toHaveBeenCalledWith({
+        where: { id: basePayload.documentId },
+        data: {
+          status: 'Failed',
+          stateReason: 'Original content unavailable',
+        },
+      });
+      expect(auditMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'ingestion.intake_failed',
+          metadata: expect.objectContaining({ reason: 'missing_original' }),
+        }),
+      );
+      expect(preprocessingMock.preprocess).not.toHaveBeenCalled();
+      expect(normalizationMock.toPdfA).not.toHaveBeenCalled();
+    });
+
+    it('marks document Failed on checksum mismatch when not allowed', async () => {
+      const processor = new IntakeProcessor(
+        prismaMock as any,
+        auditMock as any,
+        loggerMock as any,
+        storageMock,
+        preprocessingMock,
+        normalizationMock,
+        queueService,
+      );
+
+      await processor.handle({
+        data: {
+          ...basePayload,
+          originalUri: 's3://documents/originals/other',
+          metadata: {
+            rawContentBase64: Buffer.from('different-content').toString('base64'),
+          },
+          checksum: 'declared-checksum',
+        },
+      } as any);
+
+      expect(prismaMock.document.update).toHaveBeenCalledWith({
+        where: { id: basePayload.documentId },
+        data: {
+          status: 'Failed',
+          stateReason: 'Checksum mismatch',
+        },
+      });
+      expect(auditMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'ingestion.intake_failed',
+          metadata: expect.objectContaining({ reason: 'checksum_mismatch' }),
+        }),
+      );
+      expect(preprocessingMock.preprocess).not.toHaveBeenCalled();
+      expect(normalizationMock.toPdfA).not.toHaveBeenCalled();
+    });
   });
 });

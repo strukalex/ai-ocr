@@ -19,6 +19,10 @@ class MockRedis extends EventEmitter {
     this.subscribed = this.subscribed.filter((c) => c !== channel);
   }
 
+  async quit(): Promise<void> {
+    this.status = 'end';
+  }
+
   async connect(): Promise<void> {
     this.status = 'ready';
   }
@@ -39,6 +43,7 @@ describe('PreprocessingService (Python microservice integration)', () => {
   let service: PreprocessingService;
   let logger: jest.Mocked<LoggerService>;
   let storage: jest.Mocked<StorageService>;
+  let workerAuth: { buildAuthHeader: jest.Mock };
 
   beforeEach(() => {
     logger = {
@@ -53,8 +58,12 @@ describe('PreprocessingService (Python microservice integration)', () => {
       downloadObject: jest.fn(),
     } as unknown as jest.Mocked<StorageService>;
 
+    workerAuth = {
+      buildAuthHeader: jest.fn().mockReturnValue('Bearer token'),
+    };
+
     mockedAxios.post.mockReset();
-    service = new PreprocessingService(logger, storage);
+    service = new PreprocessingService(logger, storage, workerAuth as any);
   });
 
   it('uploads input, dispatches HTTP call, waits for Redis, and returns processed buffer', async () => {
@@ -66,7 +75,7 @@ describe('PreprocessingService (Python microservice integration)', () => {
       setImmediate(() => {
         redisInstance.emit(
           'message',
-          'preprocess:results',
+          body.callbackChannel,
           JSON.stringify({
             requestId: body.requestId,
             resultKey: body.resultKey,
@@ -93,7 +102,7 @@ describe('PreprocessingService (Python microservice integration)', () => {
     expect(mockedAxios.post).toHaveBeenCalledWith(
       expect.stringContaining('/preprocess'),
       expect.objectContaining({
-        callbackChannel: 'preprocess:results',
+        callbackChannel: expect.stringContaining('preprocess:results:'),
         resultBucket: 'documents',
         resultKey: expect.stringContaining('preprocess/output/'),
       }),
@@ -106,7 +115,7 @@ describe('PreprocessingService (Python microservice integration)', () => {
 
   it('times out when no redis message arrives', async () => {
     process.env['PREPROCESSOR_TIMEOUT_MS'] = '500';
-    service = new PreprocessingService(logger, storage);
+    service = new PreprocessingService(logger, storage, workerAuth as any);
     mockedAxios.post.mockResolvedValue({ status: 202 } as any);
 
     const promise = service.preprocess({ buffer: Buffer.from('input-image'), filename: 'scan.png' });
