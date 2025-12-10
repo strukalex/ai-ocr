@@ -4,6 +4,7 @@
 
 - Docker/Docker Compose available; kubectl/helm for deployment targets.
 - Node 24+, pnpm; ensure `nx` CLI available (`pnpm dlx nx --version`).
+- Python3
 - Local services: PostgreSQL, Redis, MinIO; Keycloak for SSO; Ghostscript (v9.50+) installed on host.
 
 ## Setup
@@ -20,6 +21,8 @@
 5. Seed base data (profiles, roles, sample template):
    - `pnpm nx run api:seed`
    - *Note: If using local Keycloak, ensure `realm-export.json` is imported or configured.*
+6. Install GhostScript:
+   - `sudo apt-get install ghostscript`
 
 ## Run services
 

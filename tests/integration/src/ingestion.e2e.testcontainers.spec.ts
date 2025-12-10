@@ -23,6 +23,8 @@ import { QueueService } from '@my-org/queue';
 import { StorageService } from '@my-org/storage';
 import { AuditLogger, LoggerService } from '@my-org/observability';
 import { IntakeProcessor } from '../../../apps/workers/ingestion-worker/src/app/processors/intake.processor';
+import { SplitProcessor } from '../../../apps/workers/ingestion-worker/src/app/processors/split.processor';
+import { ClassifyProcessor } from '../../../apps/workers/ingestion-worker/src/app/processors/classify.processor';
 import { NormalizationService } from '../../../apps/workers/ingestion-worker/src/app/services/normalization.service';
 import { PreprocessingService } from '../../../apps/workers/ingestion-worker/src/app/services/preprocessing.service';
 import { DocumentStatus, SourceChannel } from '@my-org/shared-types';
@@ -54,6 +56,16 @@ async function makePngBuffer(): Promise<Buffer> {
   const pdf = await PDFDocument.create();
   const page = pdf.addPage([200, 100]);
   page.drawText('image-for-preprocess');
+  const bytes = await pdf.save();
+  return Buffer.from(bytes);
+}
+
+async function makeMultiPartPdfBuffer(headers: string[]): Promise<Buffer> {
+  const pdf = await PDFDocument.create();
+  headers.forEach((header) => {
+    const page = pdf.addPage([300, 300]);
+    page.drawText(`HEADER:${header}`);
+  });
   const bytes = await pdf.save();
   return Buffer.from(bytes);
 }
@@ -112,6 +124,8 @@ describe('Ingestion (full testcontainers)', () => {
   let logger: LoggerService;
   let audit: AuditLogger;
   let intakeQueue: Queue;
+  let splitQueue: Queue;
+  let classifyQueue: Queue;
   let tmpDir: string;
   let storage: StorageService;
   const workerQueues: Queue[] = [];
@@ -228,6 +242,8 @@ describe('Ingestion (full testcontainers)', () => {
     }) as any;
 
     intakeQueue = queueService.createQueue('intake');
+    splitQueue = queueService.createQueue('split');
+    classifyQueue = queueService.createQueue('classify');
     tmpDir = await mkdtemp(path.join(tmpdir(), 'ingest-int-'));
   });
 
@@ -237,12 +253,16 @@ describe('Ingestion (full testcontainers)', () => {
       await prisma.document.deleteMany({}).catch(() => undefined);
     }
     await intakeQueue?.obliterate({ force: true }).catch(() => undefined);
+    await splitQueue?.obliterate({ force: true }).catch(() => undefined);
+    await classifyQueue?.obliterate({ force: true }).catch(() => undefined);
   });
 
   afterAll(async () => {
     await queueService.closeAll().catch(() => undefined);
     await Promise.all(workerQueues.map((q) => closeQueue(q)));
     await closeQueue(intakeQueue);
+    await closeQueue(splitQueue);
+    await closeQueue(classifyQueue);
     await app?.close();
     // small delay to allow Redis connections to settle before container teardown
     await new Promise((resolve) => setTimeout(resolve, 300));
@@ -387,6 +407,143 @@ describe('Ingestion (full testcontainers)', () => {
 
     await new Promise((resolve) => server.close(resolve));
     await redisClient.quit();
+  });
+
+  it('splits multi-part PDFs and enqueues intake jobs for children', async () => {
+    const pdf = await makeMultiPartPdfBuffer(['InvoiceA', 'InvoiceB']);
+    const checksum = createHash('sha256').update(pdf).digest('hex');
+    const filePath = path.join(tmpDir, `multipart-${randomUUID()}.pdf`);
+    await writeFile(filePath, pdf);
+
+    const payload = {
+      sourceChannel: SourceChannel.Upload,
+      originalUri: `file://${filePath}`,
+      filename: path.basename(filePath),
+      checksum,
+      idempotencyKey: `idem-${checksum}`,
+    };
+
+    const res = await request(app.getHttpServer()).post('/api/documents').send(payload).expect(201);
+    const documentId = res.body.documentId;
+
+    const job = await waitForJob(intakeQueue, payload.idempotencyKey ?? checksum, 5_000);
+    expect(job).toBeDefined();
+
+    const processor = buildProcessor();
+    await processor.handle(job as any);
+    await job?.remove();
+
+    const splitJob = await waitForJob(splitQueue, `${documentId}-split`, 5_000);
+    expect(splitJob).toBeDefined();
+
+    const splitProcessor = new SplitProcessor(prisma, storage, queueService, audit, logger);
+    await splitProcessor.handle(splitJob as any);
+    await splitJob?.remove();
+
+    const children = await prisma.document.findMany({ where: { parentDocumentId: documentId } });
+    expect(children.length).toBeGreaterThanOrEqual(1);
+    children.forEach((child) => {
+      expect(child.rootDocumentId).toBe(documentId);
+      expect(child.status).toBe(DocumentStatus.Uploaded);
+    });
+
+    const parent = await prisma.document.findUnique({ where: { id: documentId } });
+    expect(parent?.status).toBe(DocumentStatus.Split);
+    expect(parent?.stateReason).toContain('Split');
+
+    // Child intake jobs should be present (job ids are child checksums).
+    for (const child of children) {
+      const childJob = await waitForJob(intakeQueue, child.checksum ?? '', 3_000);
+      expect(childJob).toBeDefined();
+    }
+  });
+
+  it('classifies documents and routes unknown vs ambiguous cases', async () => {
+    const unknownPdf = await makeSamplePdfBuffer('classify-unknown');
+    const unknownChecksum = createHash('sha256').update(unknownPdf).digest('hex');
+    const unknownFilePath = path.join(tmpDir, `classify-unknown-${randomUUID()}.pdf`);
+    await writeFile(unknownFilePath, unknownPdf);
+
+    // Unknown path: no signals in filename/metadata/text.
+    const unknownPayload = {
+      sourceChannel: SourceChannel.Upload,
+      originalUri: `file://${unknownFilePath}`,
+      filename: 'random.bin',
+      checksum: unknownChecksum,
+      idempotencyKey: `idem-${unknownChecksum}-unknown`,
+    };
+    const unknownRes = await request(app.getHttpServer())
+      .post('/api/documents')
+      .send(unknownPayload)
+      .expect(201);
+
+    const unknownJob = await waitForJob(
+      intakeQueue,
+      unknownPayload.idempotencyKey ?? unknownChecksum,
+      5_000,
+    );
+    expect(unknownJob).toBeDefined();
+
+    const processor = buildProcessor();
+    await processor.handle(unknownJob as any);
+    await unknownJob?.remove();
+
+    const classifyJob = await waitForJob(classifyQueue, `${unknownRes.body.documentId}-classify`, 5_000);
+    expect(classifyJob).toBeDefined();
+
+    const classifyProcessor = new ClassifyProcessor(prisma, audit, logger);
+    await classifyProcessor.handle(classifyJob as any);
+    await classifyJob?.remove();
+
+    const unknownDoc = await prisma.document.findUnique({ where: { id: unknownRes.body.documentId } });
+    expect(unknownDoc?.status).toBe(DocumentStatus.Exception);
+    expect(unknownDoc?.classificationType).toBe('unknown');
+
+    // Ambiguous path: raise threshold so heuristic falls below and forces review.
+    const priorThreshold = process.env['CLASSIFICATION_THRESHOLD'];
+    process.env['CLASSIFICATION_THRESHOLD'] = '0.95';
+    const invoicePdf = await makeSamplePdfBuffer('invoice');
+    const invoiceChecksum = createHash('sha256').update(invoicePdf).digest('hex');
+    const invoiceFilePath = path.join(tmpDir, `classify-invoice-${randomUUID()}.pdf`);
+    await writeFile(invoiceFilePath, invoicePdf);
+    const invoicePayload = {
+      sourceChannel: SourceChannel.Upload,
+      originalUri: `file://${invoiceFilePath}`,
+      filename: 'invoice.pdf',
+      checksum: invoiceChecksum,
+      idempotencyKey: `idem-${invoiceChecksum}-invoice`,
+    };
+    const invoiceRes = await request(app.getHttpServer())
+      .post('/api/documents')
+      .send(invoicePayload)
+      .expect(201);
+
+    const invoiceJob = await waitForJob(
+      intakeQueue,
+      invoicePayload.idempotencyKey ?? invoiceChecksum,
+      5_000,
+    );
+    expect(invoiceJob).toBeDefined();
+
+    await processor.handle(invoiceJob as any);
+    await invoiceJob?.remove();
+
+    const invoiceClassifyJob = await waitForJob(
+      classifyQueue,
+      `${invoiceRes.body.documentId}-classify`,
+      5_000,
+    );
+    expect(invoiceClassifyJob).toBeDefined();
+
+    const highThresholdProcessor = new ClassifyProcessor(prisma, audit, logger);
+    await highThresholdProcessor.handle(invoiceClassifyJob as any);
+    await invoiceClassifyJob?.remove();
+
+    const invoiceDoc = await prisma.document.findUnique({ where: { id: invoiceRes.body.documentId } });
+    expect(invoiceDoc?.status).toBe(DocumentStatus.PendingReview);
+    expect(invoiceDoc?.stateReason).toContain('Classification requires confirmation');
+
+    process.env['CLASSIFICATION_THRESHOLD'] = priorThreshold;
   });
 
   it('watches s3 bucket and enqueues intake with parity to POST /documents', async () => {

@@ -282,7 +282,12 @@ export class SplitProcessor {
   private async extractAllPageText(buffer: Buffer): Promise<string[]> {
     try {
       // Use pdfjs-dist for actual text extraction; pdf-lib does not support it.
-      const pdfjsLib: any = await import('pdfjs-dist/legacy/build/pdf.js');
+      const pdfjsLib: any = await import('pdfjs-dist/legacy/build/pdf.mjs');
+      // Explicitly set worker to bundled legacy worker to avoid env resolution issues.
+      const workerSrc = require.resolve('pdfjs-dist/legacy/build/pdf.worker.mjs');
+      if (pdfjsLib.GlobalWorkerOptions) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
+      }
       const loadingTask = pdfjsLib.getDocument({ data: buffer });
       const pdf = await loadingTask.promise;
 
