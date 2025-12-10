@@ -235,7 +235,8 @@ export class IntakeProcessor {
           traceId,
         },
         {
-          jobId: `${payload.documentId}:split`,
+          // BullMQ disallows ':' in custom job ids; use dash separator.
+          jobId: `${payload.documentId}-split`,
         },
       );
 
