@@ -33,10 +33,14 @@ export function signWorkerToken(options: WorkerTokenOptions = {}): string | null
     aud: resolveAudience(options.audience),
   };
 
-  return jwt.sign(payload, secret, {
+  const expiresIn = (options.ttl ?? process.env['WORKER_AUTH_TTL'] ?? '15m') as jwt.SignOptions['expiresIn'];
+
+  const signOptions: jwt.SignOptions = {
     algorithm: 'HS256',
-    expiresIn: options.ttl ?? process.env['WORKER_AUTH_TTL'] ?? '15m',
-  });
+    expiresIn,
+  };
+
+  return jwt.sign(payload, secret as jwt.Secret, signOptions);
 }
 
 export function verifyWorkerToken(

@@ -23,6 +23,8 @@ describe('AuthService', () => {
   it('issues local JWT tokens when configured without Keycloak', async () => {
     process.env['LOCAL_AUTH_SECRET'] = 'test-secret';
     process.env['LOCAL_AUTH_ROLES'] = 'admin,validator';
+    process.env['LOCAL_AUTH_USER'] = 'user1';
+    process.env['LOCAL_AUTH_PASSWORD'] = 'pw';
 
     const service = new AuthService(auditMock);
     const tokens = await service.loginWithPassword({ username: 'user1', password: 'pw' });
