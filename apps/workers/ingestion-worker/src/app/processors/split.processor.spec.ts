@@ -31,9 +31,9 @@ describe('SplitProcessor heuristics', () => {
 
     const buffer = Buffer.from(await pdf.save());
     const processor = buildProcessor() as any;
-    jest.spyOn(processor, 'extractPageText').mockImplementation(async (_pdf: PDFDocument, index: number) => {
-      return ['HEADER:A Doc 1', '---SPLIT---', 'HEADER:B Doc 2'][index] ?? '';
-    });
+    jest
+      .spyOn(processor, 'extractAllPageText')
+      .mockResolvedValue(['HEADER:A Doc 1', '---SPLIT---', 'HEADER:B Doc 2']);
 
     const { parts, totalPages } = await processor.splitPdf(buffer);
 
@@ -54,9 +54,9 @@ describe('SplitProcessor heuristics', () => {
 
     const buffer = Buffer.from(await pdf.save());
     const processor = buildProcessor() as any;
-    jest.spyOn(processor, 'extractPageText').mockImplementation(async (_pdf: PDFDocument, index: number) => {
-      return ['HEADER:Invoice A', 'HEADER:Invoice A (page 2)', 'HEADER:Invoice B'][index] ?? '';
-    });
+    jest
+      .spyOn(processor, 'extractAllPageText')
+      .mockResolvedValue(['HEADER:Invoice A', 'HEADER:Invoice A (page 2)', 'HEADER:Invoice B']);
 
     const { parts } = await processor.splitPdf(buffer);
 
@@ -74,9 +74,7 @@ describe('SplitProcessor heuristics', () => {
 
     const buffer = Buffer.from(await pdf.save());
     const processor = buildProcessor() as any;
-    jest.spyOn(processor, 'extractPageText').mockImplementation(async (_pdf: PDFDocument, index: number) => {
-      return ['HEADER:Same', 'HEADER:Same'][index] ?? '';
-    });
+    jest.spyOn(processor, 'extractAllPageText').mockResolvedValue(['HEADER:Same', 'HEADER:Same']);
 
     const { parts } = await processor.splitPdf(buffer);
 

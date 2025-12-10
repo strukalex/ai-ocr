@@ -196,7 +196,8 @@ export class SplitProcessor {
   private async splitPdf(buffer: Buffer): Promise<{ parts: Buffer[]; totalPages: number }> {
     const pdf = await PDFDocument.load(buffer);
     const totalPages = pdf.getPageCount();
-    const segments = await this.detectSegments(pdf);
+    const pageTexts = await this.extractAllPageText(buffer);
+    const segments = await this.detectSegments(pdf, pageTexts);
 
     if (segments.length === 0) {
       // Fallback: treat entire document as one part.
@@ -228,6 +229,7 @@ export class SplitProcessor {
 
   private async detectSegments(
     pdf: PDFDocument,
+    pageTexts: string[],
   ): Promise<{ start: number; end: number; header?: string; skip?: boolean }[]> {
     const segments: { start: number; end: number; header?: string }[] = [];
 
@@ -237,7 +239,7 @@ export class SplitProcessor {
     const pages = pdf.getPages();
 
     for (let idx = 0; idx < pages.length; idx++) {
-      const textHint = await this.extractPageText(pdf, idx);
+      const textHint = pageTexts[idx] ?? '';
 
       const headerMatch = textHint.match(/HEADER:([A-Za-z0-9 _-]+)/i);
       const header = headerMatch ? headerMatch[1].trim() : undefined;
@@ -256,7 +258,8 @@ export class SplitProcessor {
           segments.push({ start: currentStart, end: idx - 1, header: currentHeader });
         }
         currentStart = idx + 1;
-        currentHeader = header;
+        // Reset header to avoid inheriting values extracted from separator sheets.
+        currentHeader = undefined;
         continue;
       }
 
@@ -276,12 +279,37 @@ export class SplitProcessor {
     return segments.filter((seg) => seg.start <= seg.end);
   }
 
-  protected async extractPageText(pdf: PDFDocument, idx: number): Promise<string> {
-    const single = await PDFDocument.create();
-    const [copiedPage] = await single.copyPages(pdf, [idx]);
-    single.addPage(copiedPage);
-    const buffer = Buffer.from(await single.save());
-    return buffer.toString('utf8');
+  private async extractAllPageText(buffer: Buffer): Promise<string[]> {
+    try {
+      // Use pdfjs-dist for actual text extraction; pdf-lib does not support it.
+      const pdfjsLib: any = await import('pdfjs-dist/legacy/build/pdf.js');
+      const loadingTask = pdfjsLib.getDocument({ data: buffer });
+      const pdf = await loadingTask.promise;
+
+      const texts: string[] = [];
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items
+          .map((item: { str?: string }) => item.str ?? '')
+          .join(' ');
+        texts.push(pageText);
+        if (typeof page.cleanup === 'function') {
+          page.cleanup();
+        }
+      }
+
+      if (typeof pdf.destroy === 'function') {
+        await pdf.destroy();
+      }
+
+      return texts;
+    } catch (error) {
+      this.logger.warn('ingestion.split_text_extraction_failed', {
+        error: (error as Error).message,
+      });
+      return [];
+    }
   }
 }
 

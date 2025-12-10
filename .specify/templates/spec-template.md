@@ -92,6 +92,7 @@
   - Shared DTO library `@my-org/shared-types` used by backend and frontend.
   - Frontend data via TanStack Query only; no manual `fetch()`/alt server state.
   - Styling uses Mantine props system.
+  - PDF text extraction uses `pdfjs-dist`; `pdf-lib` is limited to page assembly/splitting and metadata updates.
   - Preprocessing uses OpenCV or compatible OSS; no proprietary SDKs.
   - Backend errors use NestJS HTTP exceptions; custom codes must be OTel-traced and documented in contracts.
   - Tests: backend integration (supertest + testcontainers) and unit tests; frontend RTL + Playwright; 80% coverage gate.

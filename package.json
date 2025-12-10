@@ -42,6 +42,7 @@
     "jwks-rsa": "^3.1.0",
     "minio": "^8.0.3",
     "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^4.4.168",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
   },

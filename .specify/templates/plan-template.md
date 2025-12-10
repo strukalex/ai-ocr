@@ -18,13 +18,13 @@
 -->
 
 **Language/Version**: TypeScript (strict) — NestJS backend, React 18 frontend  
-**Primary Dependencies**: Nx, NestJS (DDD modules, class-validator), Prisma, Mantine UI, @heartexlabs/label-studio, TanStack Query, BullMQ, OpenTelemetry, OpenCV, MLflow, Temporal  
+**Primary Dependencies**: Nx, NestJS (DDD modules, class-validator), Prisma, Mantine UI, @heartexlabs/label-studio, TanStack Query, BullMQ, OpenTelemetry, OpenCV, pdfjs-dist (text extraction), pdf-lib (assembly/splitting), MLflow, Temporal  
 **Storage**: PostgreSQL (Prisma ORM), MinIO (S3-compatible), Redis for queues/cache  
 **Testing**: Jest + supertest + testcontainers (backend); React Testing Library + Playwright (frontend)  
 **Target Platform**: Docker + Kubernetes (Helm); Linux server runtime
 **Project Type**: Nx monorepo with backend and frontend workspaces  
 **Performance Goals**: Define per feature; preserve webhook and OCR throughput baselines  
-**Constraints**: 80% coverage gate (fail build below); DTO validation required; OTel tracing on new codepaths; MLflow experiment tracking + model registry; Temporal-orchestrated retraining; enrichment allowed pre/post validation with lifecycle consistency  
+**Constraints**: 80% coverage gate (fail build below); DTO validation required; OTel tracing on new codepaths; MLflow experiment tracking + model registry; Temporal-orchestrated retraining; enrichment allowed pre/post validation with lifecycle consistency; PDF text extraction uses pdfjs-dist, pdf-lib limited to structural operations  
 **Scale/Scope**: Enterprise IDP/OCR with event-driven integrations; v1 excludes redaction, BPM engine, end-user schema designer, mobile apps
 
 ## Constitution Check
@@ -44,6 +44,7 @@
 - Data & schema: Extraction templates schema-versioned with rollback plan; DB migrations via Prisma with downgrade path.
 - Error handling: Backend uses NestJS HTTP exceptions; custom codes require OTel trace linkage and contract documentation.
 - Preprocessing: Document deskew/noise reduction/binarization uses OpenCV or compatible OSS, no proprietary SDKs.
+- PDF handling: Text extraction must use `pdfjs-dist`; `pdf-lib` is restricted to page assembly/splitting and metadata writes.
 - UX: Keyboard-first flows using `react-hotkeys-hook`; outline shortcuts for validation UI changes.
 - Scope discipline: v1 exclusions honored (no redaction, BPM engine, end-user schema designer, mobile apps) unless an amendment is approved.
 

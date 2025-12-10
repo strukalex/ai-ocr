@@ -189,6 +189,55 @@ describe('Ingestion (testcontainers)', () => {
     expect(duplicateJob).toBeFalsy();
   });
 
+  it('fails intake on checksum mismatch when not allowed', async () => {
+    const pdf = await makeSamplePdfBuffer('checksum-mismatch');
+    const declaredChecksum = 'abc-not-real';
+    const filePath = path.join(tmpDir, `bad-${randomUUID()}.pdf`);
+    await writeFile(filePath, pdf);
+
+    const created = await prisma.document.create({
+      data: {
+        sourceChannel: SourceChannel.Upload,
+        originalUri: `file://${filePath}`,
+        canonicalUri: null,
+        checksum: declaredChecksum,
+        status: DocumentStatus.Uploaded,
+      },
+    });
+    await prisma.intakeRequest.create({
+      data: {
+        documentId: created.id,
+        intakeSourceId: null,
+        idempotencyKey: 'checksum-mismatch',
+        status: 'received',
+      },
+    });
+
+    const job = await queueService.enqueue(
+      intakeQueue,
+      'intake',
+      {
+        documentId: created.id,
+        checksum: declaredChecksum,
+        originalUri: `file://${filePath}`,
+        filename: path.basename(filePath),
+        sourceChannel: SourceChannel.Upload,
+        idempotencyKey: 'checksum-mismatch',
+      },
+      { jobId: 'checksum-mismatch' },
+    );
+
+    const processor = buildProcessor();
+    await processor.handle(job as any);
+    await job.remove();
+
+    const updated = await prisma.document.findUnique({ where: { id: created.id } });
+    expect(updated?.status).toBe(DocumentStatus.Failed);
+    expect(updated?.stateReason).toBe('Checksum mismatch');
+  });
+
+  // SSE metadata enforcement requires MinIO KMS configuration; skipped in this harness.
+
   it('marks document Failed when original content is unavailable', async () => {
     const doc = await prisma.document.create({
       data: {

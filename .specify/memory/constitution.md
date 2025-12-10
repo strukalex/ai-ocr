@@ -1,11 +1,11 @@
 # AI OCR IDP Platform Constitution
 <!--
 Sync Impact Report:
-- Version change: 1.3.0 → 1.4.0
-- Modified principles: Additional Constraints & Architecture (enrichment may occur pre/post validation; initial enrichment allowed on partial documents with lifecycle consistency)
+- Version change: 1.4.0 → 1.5.0
+- Modified principles: Additional Constraints & Architecture (pdfjs-dist mandated for PDF text extraction; pdf-lib reserved for assembly/splitting)
 - Added sections: None
 - Removed sections: None
-- Templates requiring updates: ✅ .specify/templates/plan-template.md, ✅ .specify/templates/spec-template.md, ✅ .specify/templates/tasks-template.md
+- Templates requiring updates: ✅ .specify/templates/plan-template.md, ✅ .specify/templates/spec-template.md
 - Follow-up TODOs: None
 -->
 
@@ -61,6 +61,8 @@ formal amendment.
   Label Studio; PostgreSQL primary DB via Prisma ORM; Redis + BullMQ for queues;
   MinIO S3-compatible storage; Keycloak for auth; Docker + Kubernetes with Helm
   for deploys.
+- PDF handling: Use `pdfjs-dist` for text extraction; reserve `pdf-lib` for page
+  assembly/splitting and metadata manipulation only.
 - Contracts: All APIs are code-first; DTOs validated on input/output. Schema
   changes require version bumps and backward-compatible migrations when
   possible. Error handling uses standard NestJS HTTP exceptions; custom codes
@@ -81,7 +83,6 @@ formal amendment.
   validation. Initial enrichment must run even on partial documents to capture
   available signals; the lifecycle and state machine must permit enrichment
   before validation without contradiction.
--
 - TLS Policy: TLS 1.2+ is mandatory for all deployed environments (staging,
   production, shared test). Local developer setups may run without TLS only on
   loopback or behind a trusted local reverse proxy/terminator; production and
@@ -118,4 +119,4 @@ formal amendment.
 - Conditions: (a) No model promotion via MLflow/Temporal in this cycle; (b) data/corrections must still be logged for future training; (c) revisit and schedule MLflow + Temporal implementation in the next planning cycle; (d) re-run constitution check when reintroducing active learning.
 - Impact: This is a temporary scope deferral; failure to schedule in the next cycle requires a new amendment.
 
-**Version**: 1.4.0 | **Ratified**: 2025-12-06 | **Last Amended**: 2025-12-06
+**Version**: 1.5.0 | **Ratified**: 2025-12-06 | **Last Amended**: 2025-12-10
