@@ -267,8 +267,6 @@ export class WatcherService implements OnModuleDestroy {
           canonicalUri: null,
           checksum,
           status: DocumentStatus.Uploaded,
-          parentDocumentId: null,
-          rootDocumentId: null,
         } satisfies Prisma.DocumentCreateInput,
         select: { id: true, status: true },
       });
