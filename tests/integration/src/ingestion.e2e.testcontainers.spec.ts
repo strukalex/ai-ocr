@@ -215,6 +215,8 @@ describe('Ingestion (full testcontainers)', () => {
         MINIO_ACCESS_KEY: minioConfig.accessKey,
         MINIO_SECRET_KEY: minioConfig.secretKey,
         MINIO_ADDRESS: ':9000',
+        MINIO_KMS_SECRET_KEY:
+          'minio-test-key:voi2eYflLnCN97BhGIIAwRJJZA/jMxSSrlpCNdLN72Y=',
       })
       .withCommand(['server', '/data'])
       .withExposedPorts(9000)
@@ -277,7 +279,7 @@ describe('Ingestion (full testcontainers)', () => {
       secretKey: minioConfig.secretKey,
       defaultBucket: minioConfig.bucket,
       sseAlgorithm: 'AES256',
-      enforceSse: false, // Disable SSE for local MinIO test container lacking KMS
+      enforceSse: true,
     });
     await storage.ensureBucket(minioConfig.bucket);
 
@@ -312,7 +314,7 @@ describe('Ingestion (full testcontainers)', () => {
   });
 
   afterAll(async () => {
-    await queueService.closeAll().catch(() => undefined);
+    await queueService?.closeAll?.().catch(() => undefined);
     await Promise.all(workerQueues.map((q) => closeQueue(q)));
     await closeQueue(intakeQueue);
     await closeQueue(splitQueue);
@@ -325,13 +327,20 @@ describe('Ingestion (full testcontainers)', () => {
     await pg?.stop();
   });
 
-  const buildProcessor = (overrides?: Partial<PreprocessingService>): IntakeProcessor => {
+  type BuildProcessorOptions = {
+    preprocessing?: Partial<PreprocessingService>;
+    stubNormalization?: boolean;
+  };
+
+  const buildProcessor = (options?: BuildProcessorOptions): IntakeProcessor => {
     const normalization = new NormalizationService(logger);
-    // Avoid Ghostscript dependency in CI by falling back to pass-through when env is missing.
-    jest.spyOn(normalization, 'toPdfA').mockImplementation(async (buffer) => buffer);
+    if (options?.stubNormalization !== false) {
+      // Avoid Ghostscript dependency in CI by falling back to pass-through when env is missing.
+      jest.spyOn(normalization, 'toPdfA').mockImplementation(async (buffer) => buffer);
+    }
 
     const preprocessing =
-      overrides ??
+      options?.preprocessing ??
       ({
         preprocess: async ({ buffer, bucket, sourceKey }: any) => ({
           buffer,
@@ -395,6 +404,62 @@ describe('Ingestion (full testcontainers)', () => {
     const doc = await prisma.document.findUnique({ where: { id: res.body.documentId } });
     expect(doc?.status).toBe(DocumentStatus.Uploaded);
     expect(doc?.canonicalUri).toContain(`/canonical/${checksum}.pdfa`);
+  });
+
+  it('converts to PDF/A via Ghostscript and enforces SSE on canonical artifact', async () => {
+    // Fail fast if Ghostscript is not available in the host environment.
+    execSync('gs --version', { stdio: 'pipe' });
+
+    const pngPdf = await makePngBuffer();
+    const checksum = createHash('sha256').update(pngPdf).digest('hex');
+    const filePath = path.join(tmpDir, `pdfa-${randomUUID()}.png`);
+    await writeFile(filePath, pngPdf);
+
+    const payload = {
+      sourceChannel: SourceChannel.Upload,
+      originalUri: `file://${filePath}`,
+      filename: path.basename(filePath),
+      checksum,
+      idempotencyKey: `idem-${checksum}-pdfa`,
+      metadata: { rawContentBase64: pngPdf.toString('base64') },
+    };
+
+    const res = await request(app.getHttpServer()).post('/api/documents').send(payload).expect(201);
+    const documentId = res.body.documentId;
+
+    const job = await waitForJob(intakeQueue, payload.idempotencyKey ?? checksum, 5_000);
+    expect(job).toBeDefined();
+
+    const processor = buildProcessor({ stubNormalization: false });
+    await processor.handle(job as any);
+    await job?.remove();
+
+    const bucket = storage.getDefaultBucket();
+    const minioClient = new MinioClient({
+      endPoint: process.env['MINIO_ENDPOINT'] ?? 'localhost',
+      port: Number(process.env['MINIO_PORT'] ?? 9000),
+      useSSL: false,
+      accessKey: minioConfig.accessKey,
+      secretKey: minioConfig.secretKey,
+    });
+
+    const canonicalKey = `canonical/${checksum}.pdfa`;
+    const canonicalStat = await minioClient.statObject(bucket, canonicalKey);
+    expect(canonicalStat).toBeDefined();
+
+    const sseEntry = Object.entries(canonicalStat.metaData ?? {}).find(([key]) =>
+      key.toLowerCase().includes('server-side-encryption'),
+    );
+    expect(sseEntry?.[1]).toBeDefined();
+
+    const canonicalBuffer = await storage.downloadObject(canonicalKey, bucket);
+    expect(canonicalBuffer.toString('ascii', 0, 4)).toBe('%PDF');
+    const canonicalChecksum = createHash('sha256').update(canonicalBuffer).digest('hex');
+    expect(canonicalChecksum).not.toEqual(checksum);
+
+    const doc = await prisma.document.findUnique({ where: { id: documentId } });
+    expect(doc?.canonicalUri).toContain(canonicalKey);
+    expect(doc?.status).toBe(DocumentStatus.Uploaded);
   });
 
   it('handles preprocessing step and stores processed artifact (stubbed service)', async () => {

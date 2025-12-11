@@ -1,11 +1,11 @@
 # AI OCR IDP Platform Constitution
 <!--
 Sync Impact Report:
-- Version change: 1.4.0 → 1.5.0
-- Modified principles: Additional Constraints & Architecture (pdfjs-dist mandated for PDF text extraction; pdf-lib reserved for assembly/splitting)
+- Version change: 1.5.0 → 1.6.0
+- Modified principles: Delivery Workflow & Quality Gates (automated agent test execution required after any test edits/additions)
 - Added sections: None
 - Removed sections: None
-- Templates requiring updates: ✅ .specify/templates/plan-template.md, ✅ .specify/templates/spec-template.md
+- Templates requiring updates: ✅ .specify/templates/plan-template.md, ✅ .specify/templates/tasks-template.md
 - Follow-up TODOs: None
 -->
 
@@ -94,8 +94,9 @@ formal amendment.
 - Tests: Integration + unit tests on backend; RTL + Playwright on frontend; mock
   all third-party services via DI. Coverage gate 80% enforced in CI.
 - Post-implementation: every feature/change must execute the relevant test
-  suites locally after code and test
-  updates, not just author tests. Task sign-off requires a green run.
+  suites locally after code and test updates, not just author tests. When the
+  agent edits or adds tests, it must run all impacted suites (unit, integration,
+  E2E/Playwright) and surface the results; task sign-off requires a green run.
 - Observability: OTel traces, structured logs, and metrics are mandatory per
   feature. Webhook contracts require contract tests.
 - Data: Schema versioning for templates and DB migrations with rollback steps.
@@ -119,4 +120,4 @@ formal amendment.
 - Conditions: (a) No model promotion via MLflow/Temporal in this cycle; (b) data/corrections must still be logged for future training; (c) revisit and schedule MLflow + Temporal implementation in the next planning cycle; (d) re-run constitution check when reintroducing active learning.
 - Impact: This is a temporary scope deferral; failure to schedule in the next cycle requires a new amendment.
 
-**Version**: 1.5.0 | **Ratified**: 2025-12-06 | **Last Amended**: 2025-12-10
+**Version**: 1.6.0 | **Ratified**: 2025-12-06 | **Last Amended**: 2025-12-10

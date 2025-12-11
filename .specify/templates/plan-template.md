@@ -40,6 +40,9 @@
 - Active learning pipeline: MLflow logs params/metrics/artifacts; Temporal orchestrates retraining (data collection → training → evaluation → deployment) with idempotent steps; model registry uses staged/live slots with rollback/fallback gates.
 - Enrichment lifecycle: Supplemental enrichment may run before and after validation; initial enrichment must execute even on partial documents, and lifecycle/state diagrams must not contradict this ordering.
 - Quality gates: Coverage ≥80% enforced; backend integration tests (supertest + testcontainers) and unit tests; frontend RTL + Playwright for critical paths; third-party services mocked via DI.
+- Test execution discipline: When the agent modifies or adds tests, it must run
+  all impacted suites (unit, integration, E2E/Playwright) and report the
+  results; task sign-off requires a green run.
 - Observability & events: OTel tracing across pipeline; structured logs and metrics; webhooks for all state changes with retry/alerts; contract tests for webhook schemas.
 - Data & schema: Extraction templates schema-versioned with rollback plan; DB migrations via Prisma with downgrade path.
 - Error handling: Backend uses NestJS HTTP exceptions; custom codes require OTel trace linkage and contract documentation.

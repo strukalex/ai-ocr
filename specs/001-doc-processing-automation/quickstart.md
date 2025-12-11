@@ -14,7 +14,7 @@
 2. Install deps:
    - `cd <project-root> && pnpm install`
 3. Start infra locally (example compose):
-   - `docker compose -f ops/compose.dev.yml up -d postgres redis minio keycloak`
+   - `docker compose -f ops/compose.dev.yml up -d postgres redis minio keycloak minio-init`
 4. Generate Prisma client and shared types:
    - `pnpm nx run shared-types:build`
    - `pnpm nx run api:prisma-generate`

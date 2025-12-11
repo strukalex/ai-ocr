@@ -8,7 +8,7 @@ description: "Task list template for feature implementation"
 **Input**: Design documents from `/specs/[###-feature-name]/`
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/
 
-**Tests**: Tests are REQUIRED per constitution. Maintain ≥80% coverage; include backend integration (supertest + testcontainers), backend unit, frontend RTL + Playwright. Use DI to mock external services.
+**Tests**: Tests are REQUIRED per constitution. Maintain ≥80% coverage; include backend integration (supertest + testcontainers), backend unit, frontend RTL + Playwright. Use DI to mock external services. When the agent edits or adds tests, it must run all impacted suites (unit, integration, E2E/Playwright) and surface results before task sign-off.
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 

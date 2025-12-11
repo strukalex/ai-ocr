@@ -14,6 +14,7 @@ import * as fs from 'fs';
 import { loadTlsConfig } from './config/tls.config';
 import { createSessionTimeoutMiddleware } from './app/security/session.middleware';
 import { createHttpsEnforcementMiddleware } from './app/security/https.middleware';
+import { json, urlencoded } from 'express';
 
 async function bootstrap() {
   await initTelemetry(process.env['OTEL_SERVICE_NAME'] ?? 'ai-ocr-api');
@@ -32,6 +33,9 @@ async function bootstrap() {
   });
   const globalPrefix = 'api';
   app.setGlobalPrefix(globalPrefix);
+  // Allow larger payloads for inline content uploads (e.g., base64 bodies).
+  app.use(json({ limit: '10mb' }));
+  app.use(urlencoded({ extended: true, limit: '10mb' }));
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

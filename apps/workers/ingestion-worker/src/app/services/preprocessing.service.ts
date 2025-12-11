@@ -83,37 +83,38 @@ export class PreprocessingService {
     const callbackChannel = `${this.responseChannel}:${requestId}`;
     await redis.subscribe(callbackChannel);
 
-    try {
-      const url = `${this.preprocessorUrl.replace(/\/$/, '')}/preprocess`;
-      await axios.post(
-        url,
-        {
-          requestId,
-          sourceBucket: bucket,
-          sourceKey,
-          resultBucket: bucket,
-          resultKey,
-          callbackChannel,
-          traceId,
-        },
-        {
-          timeout: this.timeoutMs,
-          headers: this.buildAuthHeaders(),
-        },
-      );
-    } catch (err) {
-      await redis.unsubscribe(callbackChannel).catch(() => undefined);
-      await redis.quit().catch(() => undefined);
-      this.logger.warn('preprocess.dispatch_failed', {
-        traceId,
-        error: err instanceof Error ? err.message : 'unknown',
-      });
-      throw err;
-    }
-
     let message: PreprocessResponseMessage;
     try {
       const waitForResult = this.waitForResponse(redis, callbackChannel, requestId);
+
+      try {
+        const url = `${this.preprocessorUrl.replace(/\/$/, '')}/preprocess`;
+        await axios.post(
+          url,
+          {
+            requestId,
+            sourceBucket: bucket,
+            sourceKey,
+            resultBucket: bucket,
+            resultKey,
+            callbackChannel,
+            traceId,
+          },
+          {
+            timeout: this.timeoutMs,
+            headers: this.buildAuthHeaders(),
+          },
+        );
+      } catch (err) {
+        await redis.unsubscribe(callbackChannel).catch(() => undefined);
+        await redis.quit().catch(() => undefined);
+        this.logger.warn('preprocess.dispatch_failed', {
+          traceId,
+          error: err instanceof Error ? err.message : 'unknown',
+        });
+        throw err;
+      }
+
       message = await waitForResult;
     } finally {
       await redis.unsubscribe(callbackChannel).catch(() => undefined);
