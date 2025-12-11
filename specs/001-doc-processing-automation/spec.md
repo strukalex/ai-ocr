@@ -169,6 +169,7 @@ Operators define document templates that specify where information appears on st
 - **ARCH-005**: Ensure pipeline stages are idempotent and support retry with exponential backoff for transient failures.
 - **ARCH-006**: Implement dead-letter queues for jobs that fail repeatedly after retries, with alerting and manual intervention capability.
 - **ARCH-007**: Run image preprocessing (deskew/denoise/binarize) in a dedicated Python microservice using native OpenCV, invoked via HTTP/REST with async responses delivered through Redis pub/sub; exchange image artifacts via MinIO; NestJS workers must not include OpenCV Node bindings, and the preprocessing service must scale independently from Node workers.
+- **ARCH-008**: Expose a Bull Board dashboard (via `@bull-board/nestjs` + BullMQ adapters) mounted under `/admin/queues` in the main API, secured by RBAC/basic auth middleware; reuse existing BullMQ/Redis config and ensure TLS for any non-loopback access.
 
 ### Observability Requirements
 

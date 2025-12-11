@@ -13,7 +13,7 @@ import { QUEUE_OPTIONS_TOKEN } from './queue.tokens';
     },
     QueueService,
   ],
-  exports: [QueueService],
+  exports: [QueueService, QUEUE_OPTIONS_TOKEN],
 })
 export class QueueModule {}
 

@@ -3,7 +3,7 @@
  * This is only a minimal backend to get started.
  */
 
-import { Logger, ValidationPipe } from '@nestjs/common';
+import { Logger, RequestMethod, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app/app.module';
@@ -32,7 +32,12 @@ async function bootstrap() {
     httpsOptions,
   });
   const globalPrefix = 'api';
-  app.setGlobalPrefix(globalPrefix);
+  app.setGlobalPrefix(globalPrefix, {
+    exclude: [
+      { path: 'admin/queues', method: RequestMethod.ALL },
+      { path: 'admin/queues/(.*)', method: RequestMethod.ALL },
+    ],
+  });
   // Allow larger payloads for inline content uploads (e.g., base64 bodies).
   app.use(json({ limit: '10mb' }));
   app.use(urlencoded({ extended: true, limit: '10mb' }));

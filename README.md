@@ -5,7 +5,6 @@ docker compose -f ops/compose.dev.yml up -d postgres redis minio keycloak minio-
 Generate Prisma client
 pnpm nx run shared-types:build
 pnpm nx run api:prisma-generate
-
 npx prisma migrate reset
 pnpm prisma db push
 
@@ -14,10 +13,14 @@ npx prisma studio
 
 ==
 
-API=https://localhost:3000/api
+API=http://localhost:3000/api
 REQUIRE_TLS=false
 
-TOKEN=...
+curl -X POST http://localhost:3000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin"}'
+
+TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsInByZWZlcnJlZF91c2VybmFtZSI6ImFkbWluIiwicm9sZXMiOlsib3BlcmF0b3IiLCJhZG1pbiJdLCJpYXQiOjE3NjU0OTU5ODgsImV4cCI6MTc2NTQ5OTU4OH0.EJGsNS1zyQ0Ycc1Ttrwd_TEmEg81JNM9_J21n8l-EX0
 
 FILE=sampleDocs/sample1.pdf
 CHECKSUM=$(sha256sum "$FILE" | cut -d' ' -f1)

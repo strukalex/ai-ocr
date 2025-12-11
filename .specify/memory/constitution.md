@@ -87,6 +87,10 @@ formal amendment.
   production, shared test). Local developer setups may run without TLS only on
   loopback or behind a trusted local reverse proxy/terminator; production and
   shared environments must reject plain HTTP.
+- Queue monitoring: Bull Board must be integrated via `@bull-board/nestjs` into
+  the main API behind RBAC/basic auth middleware (no public exposure), mounted
+  under `/admin/queues` (configurable), and reuse existing BullMQ connection
+  settings; ensure TLS when exposed beyond loopback.
 
 ## Delivery Workflow & Quality Gates
 

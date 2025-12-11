@@ -34,3 +34,7 @@ Thumbs.db
 # Python virtualenvs
 .venv/
 .venv-preprocess/
+# Python caches
+__pycache__/
+*.pyc
+.pytest_cache/

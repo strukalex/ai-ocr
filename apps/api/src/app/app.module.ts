@@ -10,6 +10,7 @@ import { DocumentsModule } from './documents/documents.module';
 import { IntakeSourcesModule } from './intake-sources/intake-sources.module';
 import { LearningModule } from './learning/learning.module';
 import { AuditModule } from './audit/audit.module';
+import { BullBoardDashboardModule } from './queues/bull-board.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { AuditModule } from './audit/audit.module';
     DocumentsModule,
     IntakeSourcesModule,
     LearningModule,
+    BullBoardDashboardModule,
   ],
   controllers: [AppController],
   providers: [

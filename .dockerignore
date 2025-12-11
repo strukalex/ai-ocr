@@ -13,6 +13,10 @@ Dockerfile*
 .env
 .env.*
 !.env.example
+.venv/
+.venv-preprocess/
+__pycache__/
+*.pyc
 .idea/
 .vscode/
 .DS_Store

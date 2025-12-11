@@ -61,6 +61,12 @@
   - **Dependencies**: `@my-org/observability`, `@my-org/shared-types`
   - **Done**: AuthN/AuthZ events emit audit logs with user, roles, outcome, trace id.
 
+- [X] T098 [OBS] Add Bull Board dashboard for BullMQ
+  - **Files**: `apps/api/src/app/queues/bull-board.module.ts`, `apps/api/src/app/app.module.ts`, `apps/api/src/app/auth/*`
+  - **Dependencies**: `@bull-board/nestjs`, `@bull-board/api`, `@bull-board/express` (or `@bull-board/fastify` if adapter changes)
+  - **Instructions**: Mount dashboard at `/admin/queues` in the main API using BullBoardModule with the correct adapter, reuse existing BullMQ/Redis config, and secure with RBAC/basic auth middleware per constitution (no public exposure; TLS for non-loopback access).
+  - **Done**: Authenticated admins can view queues; unauthenticated/unauthorized access is blocked; smoke test hits `/admin/queues` and asserts guard enforcement.
+
 ## Phase 2: Ingestion & Storage Pipeline (Revised for TDD)
 **Goal**: Reliable document upload and normalization defined by tests.
 
