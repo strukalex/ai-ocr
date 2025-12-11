@@ -124,3 +124,5 @@ async verify(authHeader?: string): Promise<UserContext> {
 - Generate Prisma client / validate schema: `pnpm nx run database:build` or `pnpm nx run api:prisma-generate` after setting `DATABASE_URL`.
 - Start API (dev): `pnpm nx serve api` (honors TLS env if provided).
 
+
+

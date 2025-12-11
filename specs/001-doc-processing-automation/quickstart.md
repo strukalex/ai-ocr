@@ -24,6 +24,9 @@
 6. Install GhostScript:
    - `sudo apt-get install ghostscript`
 
+## Other
+python3 -m venv .venv-preprocess and install deps with ./.venv-preprocess/bin/pip install -r tests/integration/requirements-preprocess.txt?
+
 ## Run services
 
 - API + queues producer: `pnpm nx serve api`

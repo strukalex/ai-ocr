@@ -107,8 +107,9 @@ describe('Preprocessing microservice (python + OpenCV)', () => {
     execSync(`${pythonBin} - <<PY\nimport sys\nprint(sys.version)\nPY`, { stdio: 'ignore' });
 
     if (pythonDepsReady) return;
+    const requirementsPath = path.join(__dirname, '..', 'requirements-preprocess.txt');
     execSync(
-      `${pythonBin} -m pip install --quiet --upgrade pip && ${pythonBin} -m pip install --quiet fastapi "uvicorn[standard]" minio redis opencv-python-headless numpy`,
+      `${pythonBin} -m pip install --quiet --upgrade pip && ${pythonBin} -m pip install --quiet -r ${requirementsPath}`,
       { stdio: 'ignore' },
     );
     pythonDepsReady = true;
