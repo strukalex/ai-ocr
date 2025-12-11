@@ -79,10 +79,9 @@ export class PreprocessingService {
     }
 
     const redis = this.createRedisClient();
+    await redis.connect();
     const callbackChannel = `${this.responseChannel}:${requestId}`;
     await redis.subscribe(callbackChannel);
-
-    const waitForResult = this.waitForResponse(redis, callbackChannel, requestId);
 
     try {
       const url = `${this.preprocessorUrl.replace(/\/$/, '')}/preprocess`;
@@ -114,6 +113,7 @@ export class PreprocessingService {
 
     let message: PreprocessResponseMessage;
     try {
+      const waitForResult = this.waitForResponse(redis, callbackChannel, requestId);
       message = await waitForResult;
     } finally {
       await redis.unsubscribe(callbackChannel).catch(() => undefined);

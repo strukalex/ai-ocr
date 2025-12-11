@@ -38,7 +38,17 @@ export class AuditLogger {
     });
 
     if (!this.sinks || this.sinks.length === 0) return;
-    await Promise.allSettled(this.sinks.map((sink) => sink.persist(event)));
+
+    const results = await Promise.allSettled(this.sinks.map((sink) => sink.persist(event)));
+    const failures = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
+    if (failures.length > 0) {
+      this.logger.error('audit.persist_failed', {
+        action: event.action,
+        documentId: event.documentId,
+        errors: failures.map((f) => String(f.reason ?? 'unknown')),
+      });
+      throw failures[0].reason ?? new Error('Audit sink failed');
+    }
   }
 }
 

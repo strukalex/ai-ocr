@@ -4,6 +4,7 @@ import { LoggerService } from './logger.service';
 describe('AuditLogger', () => {
   const logger = {
     info: jest.fn(),
+    error: jest.fn(),
   } as unknown as LoggerService;
 
   const sink = {
@@ -35,9 +36,10 @@ describe('AuditLogger', () => {
     expect(sink.persist).toHaveBeenCalledWith(record);
   });
 
-  it('does not throw when sinks fail', async () => {
+  it('throws and logs when sinks fail', async () => {
     const failingSink = { persist: jest.fn().mockRejectedValue(new Error('boom')) };
     const audit = new AuditLogger(logger, [failingSink]);
-    await expect(audit.log(record)).resolves.toBeUndefined();
+    await expect(audit.log(record)).rejects.toThrow('boom');
+    expect(logger.error).toHaveBeenCalled();
   });
 });

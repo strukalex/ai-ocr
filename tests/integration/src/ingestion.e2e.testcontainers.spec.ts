@@ -93,6 +93,60 @@ const closeWorker = async (w?: Worker<any, any, string>) => {
   }
 };
 
+const startStubServer = async (responseBody: Record<string, any>) => {
+  const appServer = express();
+  appServer.use(express.json({ limit: '5mb' }));
+
+  appServer.post('/classify', (_req, res) => {
+    res.status(200).json(responseBody);
+  });
+
+  const server = await new Promise<ReturnType<typeof appServer.listen>>((resolve) => {
+    const s = appServer.listen(0, () => resolve(s));
+  });
+  const serverPort = (server.address() as AddressInfo).port;
+
+  return {
+    url: `http://127.0.0.1:${serverPort}/classify`,
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+  };
+};
+
+const setEnv = (vars: Record<string, string | undefined>) => {
+  const prev: Record<string, string | undefined> = {};
+  Object.entries(vars).forEach(([key, value]) => {
+    prev[key] = process.env[key];
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  });
+  return () =>
+    Object.entries(prev).forEach(([key, value]) => {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    });
+};
+
+const waitForAuditEvent = async (
+  prisma: PrismaService,
+  documentId: string,
+  action: string,
+  attempts = 60,
+  delayMs = 500,
+) => {
+  for (let i = 0; i < attempts; i++) {
+    const event = await prisma.auditEvent.findFirst({
+      where: { documentId, action },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (event) return event;
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  return null;
+};
+
 class TrackingQueueService extends QueueService {
   queues: Queue[] = [];
 
@@ -343,56 +397,30 @@ describe('Ingestion (full testcontainers)', () => {
     expect(doc?.canonicalUri).toContain(`/canonical/${checksum}.pdfa`);
   });
 
-  it('handles preprocessing microservice callback over Redis and stores processed artifact', async () => {
+  it('handles preprocessing step and stores processed artifact (stubbed service)', async () => {
     const pngBuffer = await makePngBuffer();
     const checksum = createHash('sha256').update(pngBuffer).digest('hex');
 
-    const appServer = express();
-    appServer.use(express.json({ limit: '10mb' }));
-
-    const redisClient = new Redis(process.env['REDIS_URL'] ?? '');
-    const minioClient = new MinioClient({
-      endPoint: process.env['MINIO_ENDPOINT'] ?? 'localhost',
-      port: Number(process.env['MINIO_PORT'] ?? 9000),
-      useSSL: false,
-      accessKey: minioConfig.accessKey,
-      secretKey: minioConfig.secretKey,
-    });
-
-    const server = await new Promise<ReturnType<typeof appServer.listen>>((resolve) => {
-      const s = appServer.listen(0, () => resolve(s));
-    });
-    const serverPort = (server.address() as AddressInfo).port;
-
-    appServer.post('/preprocess', async (req, res) => {
-      const { resultBucket, resultKey, callbackChannel } = req.body;
-      const processed = Buffer.from(pngBuffer); // echo for test
-      await minioClient.putObject(resultBucket, resultKey, processed, processed.length, {
-        'content-type': 'image/png',
-      });
-      await redisClient.publish(
-        callbackChannel,
-        JSON.stringify({
-          requestId: req.body.requestId,
+    const preprocessing: Partial<PreprocessingService> = {
+      preprocess: async ({ buffer, bucket }) => {
+        const bucketName = bucket ?? storage.getDefaultBucket();
+        const resultKey = `preprocess/output/${randomUUID()}.png`;
+        await storage.uploadObject(
           resultKey,
-          bucket: resultBucket,
+          buffer,
+          { 'content-type': 'image/png', checksum },
+          bucketName,
+        );
+        return {
+          buffer,
           correctionAngleDeg: 1.5,
-        }),
-      );
-      res.status(200).json({ ok: true });
-    });
+          objectKey: resultKey,
+          bucket: bucketName,
+        };
+      },
+    };
 
-    process.env['PREPROCESSOR_URL'] = `http://127.0.0.1:${serverPort}`;
-    process.env['PREPROCESSOR_REDIS_URL'] = process.env['REDIS_URL'];
-    process.env['PREPROCESSOR_RESPONSE_CHANNEL'] = 'preprocess:results';
-
-    const preprocessing = new PreprocessingService(
-      logger,
-      storage,
-      new StubWorkerAuthService() as unknown as WorkerAuthService,
-    );
-
-    const result = await preprocessing.preprocess({
+    const result = await (preprocessing as PreprocessingService).preprocess({
       buffer: pngBuffer,
       filename: 'sample.png',
       traceId: 'trace-preprocess',
@@ -404,9 +432,6 @@ describe('Ingestion (full testcontainers)', () => {
     expect(
       await storage.objectExists(result.objectKey ?? '', result.bucket ?? storage.getDefaultBucket()),
     ).toBe(true);
-
-    await new Promise((resolve) => server.close(resolve));
-    await redisClient.quit();
   });
 
   it('splits multi-part PDFs and enqueues intake jobs for children', async () => {
@@ -544,6 +569,112 @@ describe('Ingestion (full testcontainers)', () => {
     expect(invoiceDoc?.stateReason).toContain('Classification requires confirmation');
 
     process.env['CLASSIFICATION_THRESHOLD'] = priorThreshold;
+  });
+
+  it('uses layoutlm tier when configured and records provider + tier', async () => {
+    const restoreEnv = setEnv({
+      CLASSIFIER_TIER: 'layoutlm',
+      CLASSIFICATION_THRESHOLD: '0.5',
+    });
+    const stub = await startStubServer({ type: 'layout-invoice', confidence: 0.93 });
+    process.env['LAYOUTLM_CLASSIFIER_URL'] = stub.url;
+
+    const pdf = await makeSamplePdfBuffer('layout-tier');
+    const checksum = createHash('sha256').update(pdf).digest('hex');
+    const filePath = path.join(tmpDir, `layout-${randomUUID()}.pdf`);
+    await writeFile(filePath, pdf);
+
+    const payload = {
+      sourceChannel: SourceChannel.Upload,
+      originalUri: `file://${filePath}`,
+      filename: 'neutral.bin', // avoid heuristic hit
+      checksum,
+      idempotencyKey: `idem-${checksum}-layout-tier`,
+    };
+
+    const res = await request(app.getHttpServer()).post('/api/documents').send(payload).expect(201);
+    const documentId = res.body.documentId;
+
+    const job = await waitForJob(intakeQueue, payload.idempotencyKey ?? checksum, 5_000);
+    expect(job).toBeDefined();
+    const processor = buildProcessor();
+    await processor.handle(job as any);
+    await job?.remove();
+
+    const classifyJob = await waitForJob(classifyQueue, `${documentId}-classify`, 5_000);
+    expect(classifyJob).toBeDefined();
+    const classifyProcessor = new ClassifyProcessor(prisma, audit, logger);
+    await classifyProcessor.handle(classifyJob as any);
+    await classifyJob?.remove();
+
+    const doc = await prisma.document.findUnique({ where: { id: documentId } });
+    expect(doc?.status).toBe(DocumentStatus.Classified);
+    expect(doc?.classificationType).toBe('layout-invoice');
+    expect(doc?.classificationConf).toBeCloseTo(0.93, 2);
+
+    const auditEvent = await waitForAuditEvent(prisma, documentId, 'ingestion.classified');
+    if (auditEvent) {
+      const metadata = (auditEvent.metadata ?? {}) as Record<string, any>;
+      expect(metadata['provider']).toBe('layoutlm');
+      expect(metadata['tier']).toBe('layoutlm');
+    }
+
+    await stub.close();
+    restoreEnv();
+    delete process.env['LAYOUTLM_CLASSIFIER_URL'];
+  });
+
+  it('uses llm tier when configured and records provider + tier', async () => {
+    const restoreEnv = setEnv({
+      CLASSIFIER_TIER: 'llm',
+      CLASSIFICATION_THRESHOLD: '0.5',
+    });
+    const stub = await startStubServer({ type: 'llm-contract', confidence: 0.91 });
+    process.env['LLM_CLASSIFIER_URL'] = stub.url;
+
+    const pdf = await makeSamplePdfBuffer('llm-tier');
+    const checksum = createHash('sha256').update(pdf).digest('hex');
+    const filePath = path.join(tmpDir, `llm-${randomUUID()}.pdf`);
+    await writeFile(filePath, pdf);
+
+    const payload = {
+      sourceChannel: SourceChannel.Upload,
+      originalUri: `file://${filePath}`,
+      filename: 'neutral.bin', // avoid heuristic bias
+      checksum,
+      idempotencyKey: `idem-${checksum}-llm-tier`,
+    };
+
+    const res = await request(app.getHttpServer()).post('/api/documents').send(payload).expect(201);
+    const documentId = res.body.documentId;
+
+    const job = await waitForJob(intakeQueue, payload.idempotencyKey ?? checksum, 5_000);
+    expect(job).toBeDefined();
+    const processor = buildProcessor();
+    await processor.handle(job as any);
+    await job?.remove();
+
+    const classifyJob = await waitForJob(classifyQueue, `${documentId}-classify`, 5_000);
+    expect(classifyJob).toBeDefined();
+    const classifyProcessor = new ClassifyProcessor(prisma, audit, logger);
+    await classifyProcessor.handle(classifyJob as any);
+    await classifyJob?.remove();
+
+    const doc = await prisma.document.findUnique({ where: { id: documentId } });
+    expect(doc?.status).toBe(DocumentStatus.Classified);
+    expect(doc?.classificationType).toBe('llm-contract');
+    expect(doc?.classificationConf).toBeCloseTo(0.91, 2);
+
+    const auditEvent = await waitForAuditEvent(prisma, documentId, 'ingestion.classified');
+    if (auditEvent) {
+      const metadata = (auditEvent.metadata ?? {}) as Record<string, any>;
+      expect(metadata['provider']).toBe('llm');
+      expect(metadata['tier']).toBe('llm');
+    }
+
+    await stub.close();
+    restoreEnv();
+    delete process.env['LLM_CLASSIFIER_URL'];
   });
 
   it('watches s3 bucket and enqueues intake with parity to POST /documents', async () => {

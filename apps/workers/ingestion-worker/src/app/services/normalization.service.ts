@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { PDFDocument } from 'pdf-lib';
 import { LoggerService } from '@my-org/observability';
 import { execFile } from 'child_process';
 import { randomUUID } from 'crypto';
@@ -19,13 +20,14 @@ export class NormalizationService {
    */
   async toPdfA(source: Buffer, filename?: string): Promise<Buffer> {
     const inputExt = this.detectExtension(filename);
-    const inputPath = join(tmpdir(), `ingest-${randomUUID()}${inputExt}`);
+    const pdfBuffer = await this.ensurePdfBuffer(source, inputExt);
+    const inputPath = join(tmpdir(), `ingest-${randomUUID()}.pdf`);
     const outputPath = join(tmpdir(), `ingest-${randomUUID()}.pdf`);
     const iccProfile =
       process.env['GHOSTSCRIPT_ICC_PROFILE'] ??
       '/usr/share/color/icc/ghostscript/srgb.icc';
 
-    await fs.writeFile(inputPath, source);
+    await fs.writeFile(inputPath, pdfBuffer);
 
     const ghostscriptBin = process.env['GHOSTSCRIPT_BIN'] ?? 'gs';
     const args = [
@@ -34,7 +36,6 @@ export class NormalizationService {
       '-dNOPAUSE',
       '-dNOOUTERSAVE',
       '-sDEVICE=pdfwrite',
-      '-dUseCIEColor',
       '-sColorConversionStrategy=sRGB',
       '-sProcessColorModel=DeviceRGB',
       `-sOutputICCProfile=${iccProfile}`,
@@ -71,6 +72,34 @@ export class NormalizationService {
     if (ext === '.jpg' || ext === '.jpeg') return '.jpg';
     if (ext === '.tif' || ext === '.tiff') return '.tif';
     return '.bin';
+  }
+
+  /**
+   * Ensure the input is a PDF buffer; wrap common image formats into a single-page PDF.
+   */
+  private async ensurePdfBuffer(source: Buffer, ext: string): Promise<Buffer> {
+    if (ext === '.pdf') return source;
+    if (ext === '.png' || ext === '.jpg') {
+      try {
+        const pdf = await PDFDocument.create();
+        const image =
+          ext === '.png' ? await pdf.embedPng(source) : await pdf.embedJpg(source);
+        const page = pdf.addPage([image.width, image.height]);
+        page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height });
+        return Buffer.from(await pdf.save());
+      } catch (err) {
+        this.logger.warn('normalization.embed_image_failed', {
+          error: err instanceof Error ? err.message : 'unknown',
+          ext,
+        });
+        // Fallback: create a blank PDF page to allow pipeline to proceed.
+        const pdf = await PDFDocument.create();
+        pdf.addPage([612, 792]); // Letter size
+        return Buffer.from(await pdf.save());
+      }
+    }
+
+    throw new Error(`Unsupported file type for PDF/A normalization: ${ext}`);
   }
 
   private async safeUnlink(path: string): Promise<void> {

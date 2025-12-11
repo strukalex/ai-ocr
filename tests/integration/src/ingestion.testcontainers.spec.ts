@@ -5,8 +5,10 @@ import { mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import path from 'path';
 import request from 'supertest';
-import { Queue } from 'bullmq';
+import { Queue, QueueEvents, Worker } from 'bullmq';
 import { PDFDocument } from 'pdf-lib';
+import { GenericContainer, StartedTestContainer, Wait } from 'testcontainers';
+import { Client as MinioClient } from 'minio';
 
 import { AppModule } from '../../../apps/api/src/app/app.module';
 import { JwtAuthGuard } from '../../../apps/api/src/app/auth/jwt-auth.guard';
@@ -44,11 +46,64 @@ describe('Ingestion (testcontainers)', () => {
   let intakeQueue: Queue;
   let tmpDir: string;
   let storageOptions: StorageModuleOptions;
+  let redisContainer: StartedTestContainer;
+  let minioContainer: StartedTestContainer;
+  let redisUrl: string;
+
+  const closeBullmqResources = async () => {
+    const resources = (
+      global as unknown as {
+        __BULLMQ_RESOURCES__?: {
+          queues: Set<Queue>;
+          workers: Set<Worker>;
+          events: Set<QueueEvents>;
+        };
+      }
+    ).__BULLMQ_RESOURCES__;
+    if (!resources) return;
+    const { queues, workers, events } = resources;
+    const closers = [
+      ...Array.from(queues ?? []).map((q) => q.close()),
+      ...Array.from(workers ?? []).map((w) => w.close()),
+      ...Array.from(events ?? []).map((e) => e.close()),
+    ];
+    await Promise.allSettled(closers);
+  };
 
   beforeAll(async () => {
+    // Start Redis + MinIO to ensure deterministic endpoints for Queue/Storage.
+    redisContainer = await new GenericContainer('redis:7-alpine')
+      .withExposedPorts(6379)
+      .withWaitStrategy(Wait.forLogMessage('Ready to accept connections'))
+      .start();
+
+    redisUrl = `redis://${redisContainer.getHost()}:${redisContainer.getMappedPort(6379)}`;
+
+    minioContainer = await new GenericContainer('minio/minio:latest')
+      .withEnvironment({
+        MINIO_ACCESS_KEY: 'minioadmin',
+        MINIO_SECRET_KEY: 'minioadmin',
+        MINIO_ADDRESS: ':9000',
+      })
+      .withCommand(['server', '/data'])
+      .withExposedPorts(9000)
+      .withWaitStrategy(Wait.forListeningPorts())
+      .start();
+
+    process.env['REDIS_URL'] = redisUrl;
+    process.env['MINIO_ENDPOINT'] = minioContainer.getHost();
+    process.env['MINIO_PORT'] = String(minioContainer.getMappedPort(9000));
+    process.env['MINIO_USE_SSL'] = 'false';
+    process.env['MINIO_ACCESS_KEY'] = 'minioadmin';
+    process.env['MINIO_SECRET_KEY'] = 'minioadmin';
+    process.env['MINIO_BUCKET'] = 'documents';
+    process.env['MINIO_ENFORCE_SSE'] = 'false';
+
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
+      .overrideProvider(QueueService)
+      .useValue(new QueueService({ redisUrl }))
       .overrideProvider(JwtAuthGuard)
       .useValue({
         canActivate: (context: any) => {
@@ -86,6 +141,7 @@ describe('Ingestion (testcontainers)', () => {
     logger = app.get(LoggerService);
     audit = app.get(AuditLogger);
     storage = new StorageService(storageOptions);
+    await storage.ensureBucket(storage.getDefaultBucket());
     const originalEnqueue = queueService.enqueue.bind(queueService);
     queueService.enqueue = (async (
       queue: Queue,
@@ -112,7 +168,12 @@ describe('Ingestion (testcontainers)', () => {
 
   afterAll(async () => {
     await intakeQueue?.close().catch(() => undefined);
+    await closeBullmqResources().catch(() => undefined);
+    // Brief pause to let Redis connections drain before stopping container.
+    await new Promise((resolve) => setTimeout(resolve, 200));
     await app?.close();
+    await minioContainer?.stop();
+    await redisContainer?.stop();
   });
 
   const buildProcessor = () => {
@@ -315,12 +376,11 @@ describe('Ingestion (testcontainers)', () => {
 
     const processedAuditFound = await waitForAudit(res.body.documentId, 'ingestion.intake_processed');
     if (!processedAuditFound) {
-      // Surface context without failing the suite due to timing flake.
       const audits = await prisma.auditEvent.findMany({ where: { documentId: res.body.documentId } });
       // eslint-disable-next-line no-console
       console.warn('Audit not observed yet for document', res.body.documentId, audits);
     }
-    expect(processedAuditFound || true).toBe(true);
+    expect(processedAuditFound).toBe(true);
 
     await prisma.auditEvent.deleteMany({});
 
@@ -365,7 +425,7 @@ describe('Ingestion (testcontainers)', () => {
       // eslint-disable-next-line no-console
       console.warn('Failed audit not observed yet for document', missingDoc.id, audits);
     }
-    expect(failedAuditFound || true).toBe(true);
+    expect(failedAuditFound).toBe(true);
   });
 
   it('emits structured logs with trace and document identifiers during processing', async () => {

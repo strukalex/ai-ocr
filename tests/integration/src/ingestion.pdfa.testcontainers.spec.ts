@@ -49,12 +49,8 @@ class TrackingQueueService extends QueueService {
 }
 
 const ghostscriptAvailable = (): boolean => {
-  try {
-    execSync('gs -version', { stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
-  }
+  execSync('gs -version', { stdio: 'ignore' });
+  return true;
 };
 
 describe('Ingestion PDF/A normalization (testcontainers)', () => {
@@ -77,11 +73,8 @@ describe('Ingestion PDF/A normalization (testcontainers)', () => {
   };
 
   beforeAll(async () => {
-    if (!ghostscriptAvailable()) {
-      // eslint-disable-next-line no-console
-      console.warn('Skipping PDF/A integration test: Ghostscript not available in environment.');
-      return;
-    }
+    // Fail fast if Ghostscript is missing; PDF/A coverage must run.
+    ghostscriptAvailable();
 
     pg = await new GenericContainer('postgres:16-alpine')
       .withEnvironment({
@@ -221,10 +214,6 @@ describe('Ingestion PDF/A normalization (testcontainers)', () => {
   };
 
   it('converts to PDF/A and stores canonical artifact with checksum metadata', async () => {
-    if (!ghostscriptAvailable()) {
-      return;
-    }
-
     const pdf = await PDFDocument.create();
     const page = pdf.addPage([300, 300]);
     page.drawText('pdfa-normalization');
@@ -268,6 +257,58 @@ describe('Ingestion PDF/A normalization (testcontainers)', () => {
 
     const canonicalBuffer = await storage.downloadObject(canonicalKey, bucket);
     expect(canonicalBuffer.length).toBeGreaterThan(pdfBuffer.length);
+    expect(canonicalBuffer.subarray(0, 4).toString()).toBe('%PDF');
+    expect(canonicalBuffer.toString('utf-8')).toContain('pdfaid');
+
+    const doc = await prisma.document.findUnique({ where: { id: res.body.documentId } });
+    expect(doc?.status).toBe(DocumentStatus.Uploaded);
+    expect(doc?.canonicalUri).toContain(canonicalKey);
+  });
+
+  it('converts PNG input to PDF/A and stores canonical artifact with checksum metadata', async () => {
+    const pngBuffer = Buffer.from(
+      // 32x32 PNG (valid sample used in preprocessing tests)
+      'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAAmL/9dAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH5AwMDx0bWf0XJgAAAB10RVh0Q29tbWVudABDcmVhdGVkIHdpdGggR0lNUFeBDhcAAAANSURBVFjD7cEBDQAAAMKg909tDjegAAAAAAAAAAAA4GkAAToAAZR+9qsAAAAASUVORK5CYII=',
+      'base64',
+    );
+    const checksum = createHash('sha256').update(pngBuffer).digest('hex');
+    const filePath = path.join(tmpDir, `sample-${randomUUID()}.png`);
+    await writeFile(filePath, pngBuffer);
+
+    const payload = {
+      sourceChannel: SourceChannel.Upload,
+      originalUri: `file://${filePath}`,
+      filename: path.basename(filePath),
+      checksum,
+      idempotencyKey: `idem-${checksum}-png`,
+      metadata: { rawContentBase64: pngBuffer.toString('base64') },
+    };
+
+    const res = await request(app.getHttpServer()).post('/api/documents').send(payload).expect(201);
+    expect(res.body.documentId).toBeDefined();
+
+    const job = await intakeQueue.getJob(payload.idempotencyKey ?? payload.checksum);
+    expect(job).toBeDefined();
+
+    const processor = buildProcessor();
+    await processor.handle(job as any);
+    await job?.remove();
+
+    const bucket = storage.getDefaultBucket();
+    const minioClient = new MinioClient({
+      endPoint: process.env['MINIO_ENDPOINT'] ?? 'localhost',
+      port: Number(process.env['MINIO_PORT'] ?? 9000),
+      useSSL: false,
+      accessKey: minioConfig.accessKey,
+      secretKey: minioConfig.secretKey,
+    });
+
+    const canonicalKey = `canonical/${checksum}.pdfa`;
+    const canonicalStat = await minioClient.statObject(bucket, canonicalKey);
+    expect(canonicalStat).toBeDefined();
+    expect(canonicalStat.metaData?.['checksum-sha256']).toBeDefined();
+
+    const canonicalBuffer = await storage.downloadObject(canonicalKey, bucket);
     expect(canonicalBuffer.subarray(0, 4).toString()).toBe('%PDF');
     expect(canonicalBuffer.toString('utf-8')).toContain('pdfaid');
 

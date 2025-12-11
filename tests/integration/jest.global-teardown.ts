@@ -1,3 +1,4 @@
+import type { Queue, QueueEvents, Worker } from 'bullmq';
 import type { StartedTestContainer } from 'testcontainers';
 
 type TestEnvironments = {
@@ -15,9 +16,9 @@ declare global {
   // eslint-disable-next-line no-var
   var __BULLMQ_RESOURCES__:
     | {
-        queues: Set<{ close: () => Promise<void> }>;
-        workers: Set<{ close: () => Promise<void> }>;
-        events: Set<{ close: () => Promise<void> }>;
+        queues: Set<Queue>;
+        workers: Set<Worker>;
+        events: Set<QueueEvents>;
       }
     | undefined;
 }

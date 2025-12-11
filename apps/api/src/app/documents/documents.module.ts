@@ -4,11 +4,12 @@ import { CorrectionsController } from './corrections.controller';
 import { CorrectionsService } from './corrections.service';
 import { DocumentsController } from './documents.controller';
 import { DocumentsService } from './documents.service';
-import { AuditLogger, TracingModule } from '@my-org/observability';
+import { TracingModule } from '@my-org/observability';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
-  imports: [QueueModule, TracingModule],
+  imports: [QueueModule, TracingModule, AuditModule],
   controllers: [DocumentsController, CorrectionsController],
-  providers: [DocumentsService, CorrectionsService, AuditLogger],
+  providers: [DocumentsService, CorrectionsService],
 })
 export class DocumentsModule {}

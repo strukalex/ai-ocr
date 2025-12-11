@@ -6,8 +6,7 @@ module.exports = {
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   globalSetup: '<rootDir>/jest.global-setup.ts',
   globalTeardown: '<rootDir>/jest.global-teardown.ts',
-  // Containers and BullMQ handles can linger; force exit after teardown.
-  forceExit: true,
+  // Avoid forced exit to let async cleanups finish; hangs should be fixed at source.
   maxWorkers: 1,
   transform: {
     '^.+\\.[tj]s$': ['ts-jest', { tsconfig: '<rootDir>/tsconfig.spec.json' }],
