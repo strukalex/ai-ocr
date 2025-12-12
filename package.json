@@ -14,7 +14,8 @@
     "test:coverage:fresh": "nx run-many --target=test --all --exclude=ai-ocr --runInBand --coverage --skip-nx-cache",
     "coverage:merge": "node tools/merge-coverage.js",
     "lint": "nx lint",
-    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\""
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\"",
+    "reset:env": "bash ops/reset-dev-env.sh"
   },
   "repository": {
     "type": "git",
