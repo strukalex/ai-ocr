@@ -188,6 +188,21 @@
   - **Files**: `apps/workers/processing-worker/src/app/processors/extract.processor.ts`
   - **Dependencies**: `@my-org/shared-types`, `apps/workers/processing-worker/src/app/ocr/*`, `@my-org/database`
   - **Done**: Processor calls correct provider based on config/flag and saves raw text to DB.
+
+- [ ] T018a [US1] Add lightweight OCR preview for classification
+  - **Files**: `apps/workers/ingestion-worker/src/app/processors/intake.processor.ts`, `apps/workers/ingestion-worker/src/app/processors/classify.processor.ts`
+  - **Dependencies**: `@my-org/shared-types`, `@my-org/database`, OCR preview helper (reuse PaddleOCR sidecar minimal page-1 call)
+  - **Done**: Intake runs fast OCR on first page/canonical artifact, attaches text to classify job payload; classification prefers OCR text over filename/metadata, logs OCR snippet in audit metadata.
+
+- [ ] T046a [US1] Pass OCR text into classifier providers
+  - **Files**: `apps/workers/ingestion-worker/src/app/processors/classify.processor.ts`, `apps/workers/ingestion-worker/src/app/processors/classify/*.provider.ts`
+  - **Dependencies**: `@my-org/shared-types`
+  - **Done**: LayoutLM/LLM/heuristic all consume OCR text when available; audit event includes provider tier and whether OCR text was used.
+
+- [ ] T046b [US1] Update heuristic to prioritize OCR keywords
+  - **Files**: `apps/workers/ingestion-worker/src/app/processors/classify.processor.ts`
+  - **Dependencies**: `@my-org/shared-types`
+  - **Done**: Heuristic keyword detection runs on OCR text (not just filename/metadata) with OCR hits weighted higher; unknown/ambiguous thresholds unchanged.
 - [ ] T094 [US1] Implement canonical normalization service for extracted values
   - **Files**: `apps/workers/processing-worker/src/app/services/normalization.service.ts`, `apps/workers/processing-worker/src/app/processors/extract.processor.ts`, `apps/workers/processing-worker/src/app/processors/enrich-pre.processor.ts`
   - **Dependencies**: `@my-org/shared-types`, `@my-org/database`

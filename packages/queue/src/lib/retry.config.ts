@@ -15,7 +15,8 @@ export const STANDARD_BACKOFF: JobsOptions['backoff'] = {
 export const DEFAULT_JOB_OPTIONS: JobsOptions = {
   attempts: 5,
   backoff: STANDARD_BACKOFF,
-  removeOnComplete: true,
+  // Keep completed jobs for 1 day so they appear in Bull Board.
+  removeOnComplete: { age: 60 * 60 * 24 },
   removeOnFail: false,
 };
 

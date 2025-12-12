@@ -130,6 +130,7 @@ Operators define document templates that specify where information appears on st
 - **FR-001**: Accept documents via direct upload and monitored storage locations without requiring workflow changes for submitters.
 - **FR-002**: Support digitally created PDFs and scanned images (PDF, JPG, PNG, TIFF) and run preprocessing to correct skew, noise, and low contrast.
 - **FR-003**: Auto-classify document type without submitter input; detect ambiguous classifications and pause for human confirmation with explanation.
+- **FR-003a**: Feed OCR-derived text into classification. Perform a fast OCR pass (at least the first page, image-backed PDF/A input) to supply text to all classifier tiers (heuristic, LayoutLM, LLM). Classification must prefer OCR text over filename/metadata-only signals and include OCR snippets in audit metadata for tuning; heuristic keyword detection must run on OCR text, not just filenames.
 - **FR-004**: Handle previously unseen document types by routing to exception handling with capture of patterns for future configuration.
 - **FR-005**: Allow operators to choose processing profiles per document type with runtime switchable AI/ML tiering (primary OCR, secondary service, structured model, unstructured fallback).
 - **FR-006**: Allow operators to control when learning from corrections is applied versus using fixed rules; provide a safe toggle (with rollback capability and staged rollout validation) and scheduling for applying improvements.
@@ -163,7 +164,7 @@ Operators define document templates that specify where information appears on st
 ### Architecture & Infrastructure Requirements
 
 - **ARCH-001**: Implement event-driven asynchronous processing pipeline where document uploads enqueue jobs rather than blocking for completion.
-- **ARCH-002**: Use message queues or task queues to decouple processing stages (intake → classification → OCR → extraction → enrichment for pre-validation lookups → validation/review → enrichment for export completion → export) while ensuring pre-validation enrichment runs before validation per FR-030.
+- **ARCH-002**: Use message queues or task queues to decouple processing stages. Updated order to support OCR-informed classification: intake → preprocessing/normalization → **lightweight OCR preview → classification (with OCR text)** → full OCR/extraction → enrichment for pre-validation lookups → validation/review → enrichment for export completion → export. Pre-validation enrichment still runs before validation per FR-030.
 - **ARCH-003**: Deploy background workers that process queued jobs and can scale independently based on queue depth and processing latency.
 - **ARCH-004**: Emit state-change events at each pipeline stage to enable real-time status tracking and webhook notifications.
 - **ARCH-005**: Ensure pipeline stages are idempotent and support retry with exponential backoff for transient failures.

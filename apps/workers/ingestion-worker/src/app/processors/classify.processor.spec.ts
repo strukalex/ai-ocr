@@ -39,6 +39,7 @@ describe('ClassifyProcessor', () => {
       data: {
         documentId: 'doc-1',
         filename: 'invoice-123.pdf',
+        text: 'This is an invoice for services rendered.',
         metadata: { submitter: 'test' },
         traceId: 'trace-1',
       },
@@ -56,6 +57,36 @@ describe('ClassifyProcessor', () => {
     expect(logger.info).toHaveBeenCalledWith(
       'ingestion.classified',
       expect.objectContaining({ documentId: 'doc-1' }),
+    );
+  });
+
+  it('marks documents as Classified using filename when OCR text is absent', async () => {
+    prisma.document.findUnique.mockResolvedValue({
+      id: 'doc-3',
+      status: DocumentStatus.Uploaded,
+      classificationConf: null,
+      classificationType: null,
+      processingProfileId: null,
+    });
+    prisma.document.update.mockResolvedValue({});
+
+    await processor.handle({
+      data: {
+        documentId: 'doc-3',
+        filename: 'invoice-filename-only.pdf',
+        metadata: {},
+        traceId: 'trace-3',
+      },
+    } as any);
+
+    expect(prisma.document.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'doc-3' },
+        data: expect.objectContaining({
+          status: DocumentStatus.Classified,
+          classificationType: 'invoice',
+        }),
+      }),
     );
   });
 

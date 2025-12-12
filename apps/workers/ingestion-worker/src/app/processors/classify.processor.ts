@@ -245,25 +245,36 @@ export class ClassifyProcessor {
 
   private classifyHeuristically(payload: ClassifyJobPayload): ClassificationResult {
     const textPart = (payload.text ?? '').toLowerCase();
-    const haystack =
-      `${textPart} ${payload.filename ?? ''} ${JSON.stringify(payload.metadata ?? {})}`.toLowerCase();
+    const metaPart = `${payload.filename ?? ''} ${JSON.stringify(payload.metadata ?? {})}`.toLowerCase();
 
     const candidates: ClassificationCandidate[] = [];
-    if (/\binvoice\b|inv[-_\s]?/i.test(haystack)) {
-      candidates.push({ type: 'invoice', confidence: 0.92 });
-    }
-    if (/receipt|pos|till/i.test(haystack)) {
-      candidates.push({ type: 'receipt', confidence: 0.78 });
-    }
-    if (/bill of lading|bol/i.test(haystack)) {
-      candidates.push({ type: 'bill_of_lading', confidence: 0.8 });
-    }
-    if (/contract|agreement/i.test(haystack)) {
-      candidates.push({ type: 'contract', confidence: 0.86 });
-    }
-    if (/id card|passport|driver/i.test(haystack)) {
-      candidates.push({ type: 'identity', confidence: 0.7 });
-    }
+
+    // Helper to push a candidate with different weights depending on signal source.
+    const pushHit = (type: string, fromText: boolean, fromMeta: boolean, base: number) => {
+      // If we match on filename/metadata alone, treat it as definitive (confidence 1).
+      const confidence = fromText ? base : fromMeta ? 1 : base - 0.2;
+      candidates.push({ type, confidence: Math.max(confidence, 0.1) });
+    };
+
+    const test = (pattern: RegExp) => ({
+      text: pattern.test(textPart),
+      meta: pattern.test(metaPart),
+    });
+
+    const invoice = test(/\binvoice\b|inv[-_\s]?/i);
+    if (invoice.text || invoice.meta) pushHit('invoice', invoice.text, invoice.meta, 0.92);
+
+    const receipt = test(/receipt|pos|till/i);
+    if (receipt.text || receipt.meta) pushHit('receipt', receipt.text, receipt.meta, 0.78);
+
+    const bol = test(/bill of lading|bol/i);
+    if (bol.text || bol.meta) pushHit('bill_of_lading', bol.text, bol.meta, 0.8);
+
+    const contract = test(/contract|agreement/i);
+    if (contract.text || contract.meta) pushHit('contract', contract.text, contract.meta, 0.86);
+
+    const identity = test(/id card|passport|driver/i);
+    if (identity.text || identity.meta) pushHit('identity', identity.text, identity.meta, 0.7);
 
     if (candidates.length === 0) {
       candidates.push({ type: 'unknown', confidence: 0.4 });

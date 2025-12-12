@@ -47,3 +47,21 @@ cat <<EOF | curl -k -X POST "$API/documents" \
   }
 }
 EOF
+
+## Invoice test (classifies by file name)
+
+cat <<EOF | curl -k -X POST "$API/documents" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d @-
+{
+  "sourceChannel": "upload",
+  "originalUri": "file://sampleDocs/invoice.png",
+  "filename": "$(basename "sampleDocs/invoice.png")",
+  "checksum": "$(sha256sum "sampleDocs/invoice.png" | cut -d' ' -f1)",
+  "idempotencyKey": "idem-$(sha256sum "sampleDocs/invoice.png" | cut -d' ' -f1)",
+  "metadata": {
+    "rawContentBase64": "$(base64 -w0 "sampleDocs/invoice.png")"
+  }
+}
+EOF
