@@ -49,7 +49,10 @@ export class QueueService {
     const jobOptions = withDefaultJobOptions(options);
     const reusableStates = new Set(['waiting', 'active', 'delayed', 'paused']);
 
-    if (!jobOptions.jobId) {
+    if (jobOptions.jobId) {
+      const sanitized = sanitizeJobId(jobOptions.jobId);
+      jobOptions.jobId = sanitized;
+    } else {
       return queue.add(name as any, data as any, jobOptions);
     }
 
@@ -94,6 +97,11 @@ export class QueueService {
       prefix: this.options.queuePrefix ?? 'bull',
     };
   }
+}
+
+function sanitizeJobId(jobId: string): string {
+  // BullMQ disallows certain characters (e.g., ':'); normalize to a safe token.
+  return jobId.replace(/[:\s]+/g, '-');
 }
 
 function isJobIdAlreadyExistsError(error: unknown): boolean {

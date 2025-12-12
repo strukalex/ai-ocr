@@ -93,7 +93,7 @@ export class SplitProcessor {
           sourceChannel: payload.sourceChannel ?? parent.sourceChannel ?? SourceChannel.WatchedStorage,
           traceId,
         },
-        { jobId: `${payload.documentId}:classify` },
+        { jobId: `${payload.documentId}-classify` },
       );
       return;
     }
@@ -319,11 +319,11 @@ export class SplitProcessor {
     try {
       // Use pdfjs-dist for actual text extraction; pdf-lib does not support it.
       const pdfjsLib: any = await (Function(
-        'return import("pdfjs-dist/legacy/build/pdf.mjs")',
+        'return import("pdfjs-dist/legacy/build/pdf.node.mjs")',
       )() as Promise<any>);
       const pdfModule: any = pdfjsLib?.default ?? pdfjsLib;
       // Node runtime: run in-process without a separate worker to avoid workerSrc type issues.
-      const loadingTask = pdfModule.getDocument({ data: buffer, disableWorker: true });
+      const loadingTask = pdfModule.getDocument({ data: new Uint8Array(buffer), disableWorker: true });
       const pdf = await loadingTask.promise;
 
       const texts: string[] = [];

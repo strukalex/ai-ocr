@@ -136,7 +136,7 @@ describe('SplitProcessor handle', () => {
       classifyQueue,
       'classify',
       expect.objectContaining({ documentId: 'doc-1', filename: 'doc-1.pdf', sourceChannel: 'upload' }),
-      { jobId: 'doc-1:classify' },
+      { jobId: 'doc-1-classify' },
     );
   });
 });

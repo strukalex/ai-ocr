@@ -409,21 +409,49 @@ export class IntakeProcessor {
       traceId,
     };
 
-    await this.queueService.enqueue(
-      this.classifyQueue,
-      'classify',
-      classifyPayload,
-      {
-        jobId: `${payload.documentId}:classify`,
-      },
-    );
+    try {
+      await this.queueService.enqueue(
+        this.classifyQueue,
+        'classify',
+        classifyPayload,
+        {
+          jobId: `${payload.documentId}-classify`,
+        },
+      );
 
-    this.logger.info('ingestion.classify_enqueued', {
-      documentId: payload.documentId,
-      traceId,
-      checksum: payload.checksum,
-      sourceChannel: payload.sourceChannel,
-    });
+      this.logger.info('ingestion.classify_enqueued', {
+        documentId: payload.documentId,
+        traceId,
+        checksum: payload.checksum,
+        sourceChannel: payload.sourceChannel,
+      });
+    } catch (error) {
+      await this.prisma.document.update({
+        where: { id: payload.documentId },
+        data: { status: DocumentStatus.Failed, stateReason: 'Classify enqueue failed' },
+      });
+
+      await this.audit.log({
+        action: 'ingestion.intake_failed',
+        actorId: 'system',
+        outcome: 'failure',
+        traceId,
+        documentId: payload.documentId,
+        metadata: {
+          reason: 'classify_enqueue_failed',
+          error: (error as Error).message,
+        },
+      });
+
+      this.logger.error('ingestion.intake_failed', {
+        documentId: payload.documentId,
+        traceId,
+        error: (error as Error).message,
+        stage: 'classify_enqueue',
+      });
+
+      throw error;
+    }
   }
 }
 

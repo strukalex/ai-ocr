@@ -114,6 +114,18 @@ describe('QueueService', () => {
     expect(queueMock.getJob).toHaveBeenCalledWith('abc');
     expect(job.id).toBe('job-new');
   });
+
+  it('sanitizes disallowed characters in custom jobId', async () => {
+    const queueMock = {
+      getJob: jest.fn().mockResolvedValue(null),
+      add: jest.fn().mockResolvedValue({ id: 'job-new' }),
+    } as any;
+
+    await service.enqueue(queueMock, 'intake', { foo: 'bar' }, { jobId: 'doc:1' });
+
+    const optionsUsed = (queueMock.add as jest.Mock).mock.calls[0][2];
+    expect(optionsUsed.jobId).toBe('doc-1');
+  });
 });
 
 
