@@ -384,6 +384,7 @@ if __name__ == "__main__":
     process.env['PREPROCESSOR_REDIS_URL'] = `redis://${redis.getHost()}:${redis.getMappedPort(6379)}`;
     process.env['PREPROCESSOR_RESPONSE_CHANNEL'] = 'preprocess:results-timeout';
     process.env['PREPROCESSOR_TIMEOUT_MS'] = '500';
+    process.env['ALLOW_PREPROCESSOR_TIMEOUT_FALLBACK'] = 'false';
 
     const server = http.createServer((_req, res) => {
       res.writeHead(202, { 'Content-Type': 'application/json' });
@@ -408,6 +409,7 @@ if __name__ == "__main__":
     ).rejects.toThrow('Preprocessing response timed out');
 
     await new Promise<void>((resolve) => server.close(() => resolve()));
+    delete process.env['ALLOW_PREPROCESSOR_TIMEOUT_FALLBACK'];
   });
 });
 

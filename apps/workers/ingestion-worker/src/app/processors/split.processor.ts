@@ -24,6 +24,7 @@ export interface SplitJobPayload {
 @Injectable()
 export class SplitProcessor {
   private readonly intakeQueue: Queue;
+  private readonly classifyQueue: Queue;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -33,6 +34,7 @@ export class SplitProcessor {
     private readonly logger: LoggerService,
   ) {
     this.intakeQueue = this.queueService.createQueue('intake');
+    this.classifyQueue = this.queueService.createQueue('classify');
   }
 
   async handle(job: Job<SplitJobPayload>): Promise<void> {
@@ -63,13 +65,36 @@ export class SplitProcessor {
       return;
     }
 
-    const { parts, totalPages } = await this.splitPdf(documentBuffer);
-    if (parts.length === 0) {
+    const { parts, totalPages, splitted } = await this.splitPdf(documentBuffer);
+
+    if (!splitted) {
+      await this.audit.log({
+        action: 'ingestion.split_noop',
+        actorId: 'system',
+        outcome: 'success',
+        traceId,
+        documentId: payload.documentId,
+        metadata: { totalPages },
+      });
+
       this.logger.info('ingestion.split_noop', {
         documentId: payload.documentId,
         canonicalUri: payload.canonicalUri,
         traceId,
+        totalPages,
       });
+
+      await this.queueService.enqueue(
+        this.classifyQueue,
+        'classify',
+        {
+          documentId: payload.documentId,
+          filename: payload.filename,
+          sourceChannel: payload.sourceChannel ?? parent.sourceChannel ?? SourceChannel.WatchedStorage,
+          traceId,
+        },
+        { jobId: `${payload.documentId}:classify` },
+      );
       return;
     }
 
@@ -193,16 +218,25 @@ export class SplitProcessor {
     return Buffer.alloc(0);
   }
 
-  private async splitPdf(buffer: Buffer): Promise<{ parts: Buffer[]; totalPages: number }> {
+  private async splitPdf(buffer: Buffer): Promise<{ parts: Buffer[]; totalPages: number; splitted: boolean }> {
     const pdf = await PDFDocument.load(buffer);
     const totalPages = pdf.getPageCount();
     const pageTexts = await this.extractAllPageText(buffer);
-    const segments = await this.detectSegments(pdf, pageTexts);
+    let segments = await this.detectSegments(pdf, pageTexts);
+    if (totalPages > 1) {
+      const coversAllPages =
+        segments.length === 1 && segments[0]?.start === 0 && segments[0]?.end === totalPages - 1;
+
+      if (segments.length === 0 || coversAllPages) {
+        // Fallback: split per page when detection fails or only one contiguous segment is found.
+        segments = Array.from({ length: totalPages }, (_, i) => ({ start: i, end: i }));
+      }
+    }
 
     if (segments.length === 0) {
       // Fallback: treat entire document as one part.
       const saved = await pdf.save();
-      return { parts: [Buffer.from(saved)], totalPages };
+      return { parts: [Buffer.from(saved)], totalPages, splitted: false };
     }
 
     const parts: Buffer[] = [];
@@ -215,7 +249,9 @@ export class SplitProcessor {
       parts.push(Buffer.from(saved));
     }
 
-    return { parts, totalPages };
+    const coversAllPages = segments.length === 1 && segments[0]?.start === 0 && segments[0]?.end === totalPages - 1;
+    const shouldSplit = parts.length > 1 || totalPages > 1;
+    return { parts, totalPages, splitted: shouldSplit && !coversAllPages ? true : shouldSplit };
   }
 
   private computeSha256(buffer: Buffer): string {
@@ -282,13 +318,12 @@ export class SplitProcessor {
   private async extractAllPageText(buffer: Buffer): Promise<string[]> {
     try {
       // Use pdfjs-dist for actual text extraction; pdf-lib does not support it.
-      const pdfjsLib: any = await import('pdfjs-dist/legacy/build/pdf.mjs');
-      // Explicitly set worker to bundled legacy worker to avoid env resolution issues.
-      const workerSrc = require.resolve('pdfjs-dist/legacy/build/pdf.worker.mjs');
-      if (pdfjsLib.GlobalWorkerOptions) {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
-      }
-      const loadingTask = pdfjsLib.getDocument({ data: buffer });
+      const pdfjsLib: any = await (Function(
+        'return import("pdfjs-dist/legacy/build/pdf.mjs")',
+      )() as Promise<any>);
+      const pdfModule: any = pdfjsLib?.default ?? pdfjsLib;
+      // Node runtime: run in-process without a separate worker to avoid workerSrc type issues.
+      const loadingTask = pdfModule.getDocument({ data: buffer, disableWorker: true });
       const pdf = await loadingTask.promise;
 
       const texts: string[] = [];

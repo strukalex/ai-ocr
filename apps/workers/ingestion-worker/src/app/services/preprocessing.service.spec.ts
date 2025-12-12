@@ -115,6 +115,7 @@ describe('PreprocessingService (Python microservice integration)', () => {
 
   it('times out when no redis message arrives', async () => {
     process.env['PREPROCESSOR_TIMEOUT_MS'] = '500';
+    process.env['ALLOW_PREPROCESSOR_TIMEOUT_FALLBACK'] = 'false';
     service = new PreprocessingService(logger, storage, workerAuth as any);
     mockedAxios.post.mockResolvedValue({ status: 202 } as any);
 
@@ -130,5 +131,6 @@ describe('PreprocessingService (Python microservice integration)', () => {
         expect(err?.message ?? '').toMatch(/timed out/i);
       });
     delete process.env['PREPROCESSOR_TIMEOUT_MS'];
+    delete process.env['ALLOW_PREPROCESSOR_TIMEOUT_FALLBACK'];
   }, 10000);
 });

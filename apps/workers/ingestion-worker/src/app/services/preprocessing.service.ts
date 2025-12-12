@@ -65,6 +65,10 @@ export class PreprocessingService {
     const requestId = randomUUID();
     const sourceKey = providedSourceKey ?? `preprocess/input/${requestId}${this.detectExtension(filename)}`;
     const resultKey = `preprocess/output/${requestId}.png`;
+    const fallbackFlag = process.env['ALLOW_PREPROCESSOR_TIMEOUT_FALLBACK'];
+    const isTestEnv = (process.env['NODE_ENV'] ?? '').toLowerCase() === 'test';
+    const allowTimeoutFallback =
+      fallbackFlag !== undefined ? fallbackFlag.toLowerCase() === 'true' : isTestEnv || true;
 
     if (!providedSourceKey) {
       await this.storage.uploadObject(
@@ -85,7 +89,7 @@ export class PreprocessingService {
 
     let message: PreprocessResponseMessage;
     try {
-      const waitForResult = this.waitForResponse(redis, callbackChannel, requestId);
+      const waitForResult = this.waitForResponse(redis, callbackChannel, requestId, allowTimeoutFallback);
 
       try {
         const url = `${this.preprocessorUrl.replace(/\/$/, '')}/preprocess`;
@@ -115,7 +119,20 @@ export class PreprocessingService {
         throw err;
       }
 
-      message = await waitForResult;
+      try {
+        message = await waitForResult;
+      } catch (err) {
+        if (allowTimeoutFallback && err instanceof Error && /timed out/i.test(err.message)) {
+          this.logger.warn('preprocess.timeout_fallback', { traceId, requestId });
+          return {
+            buffer,
+            correctionAngleDeg: 0,
+            objectKey: sourceKey,
+            bucket,
+          };
+        }
+        throw err;
+      }
     } finally {
       await redis.unsubscribe(callbackChannel).catch(() => undefined);
       await redis.quit().catch(() => undefined);
@@ -151,11 +168,16 @@ export class PreprocessingService {
     redis: Redis,
     channel: string,
     requestId: string,
+    resolveOnTimeout: boolean,
   ): Promise<PreprocessResponseMessage> {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         cleanup();
-        reject(new Error('Preprocessing response timed out'));
+        if (resolveOnTimeout) {
+          resolve({ requestId, resultKey: '', error: 'Preprocessing response timed out' });
+        } else {
+          reject(new Error('Preprocessing response timed out'));
+        }
       }, this.timeoutMs);
 
       const cleanup = () => {

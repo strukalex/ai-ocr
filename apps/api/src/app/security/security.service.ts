@@ -16,14 +16,16 @@ export class SecurityConfigService implements OnModuleInit {
    * For DB, we rely on environment readiness signals surfaced by ops (e.g., disk/TDE flags).
    */
   validateAtRestEncryption(): void {
-    if (!this.config.requireAtRestEncryption) return;
+    const forceChecks =
+      (process.env['FORCE_SECURITY_VALIDATION_IN_TEST'] ?? 'false').toLowerCase() === 'true';
+    const requireEncryption =
+      forceChecks ||
+      (process.env['REQUIRE_AT_REST_ENCRYPTION'] ?? 'true').toLowerCase() === 'true';
+    if (!requireEncryption) return;
 
     const isJest = process.env['JEST_WORKER_ID'] !== undefined;
     const isTestEnv = (process.env['NODE_ENV'] ?? '').toLowerCase() === 'test';
-    const allowChecksInTest =
-      (process.env['FORCE_SECURITY_VALIDATION_IN_TEST'] ?? 'false').toLowerCase() === 'true';
-
-    if ((isTestEnv || isJest) && !allowChecksInTest) return;
+    if ((isTestEnv || isJest) && !forceChecks) return;
 
     const storageOk =
       (process.env['MINIO_ENFORCE_SSE'] ?? 'true').toLowerCase() === 'true' &&
