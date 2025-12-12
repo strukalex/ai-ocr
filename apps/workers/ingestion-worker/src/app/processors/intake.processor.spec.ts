@@ -249,5 +249,59 @@ describe('IntakeProcessor', () => {
       }),
     );
   });
+
+  it('keeps split child artifacts in splits/ without copying into originals/', async () => {
+    const rawBuffer = Buffer.from('split-child-bytes');
+    const rawChecksum = createHash('sha256').update(rawBuffer).digest('hex');
+    const splitUri = `s3://documents/splits/parent-1/part-1-${rawChecksum}.pdf`;
+
+    const payload: IntakeJobPayload = {
+      documentId: 'child-1',
+      checksum: rawChecksum,
+      originalUri: splitUri,
+      filename: 'part-1.pdf',
+      sourceChannel: 'upload',
+    };
+
+    prisma.document.findUnique.mockResolvedValue({
+      id: payload.documentId,
+      originalUri: splitUri,
+      status: DocumentStatus.Uploaded,
+    } as any);
+
+    jest.spyOn(processor as any, 'loadOriginalBuffer').mockResolvedValue(rawBuffer);
+    jest.spyOn(processor as any, 'shouldSplit').mockResolvedValue(false);
+
+    storage.objectExists.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    const canonicalBuffer = Buffer.from('pdfa-child');
+    normalization.toPdfA.mockResolvedValue(canonicalBuffer);
+    const canonicalChecksum = createHash('sha256').update(canonicalBuffer).digest('hex');
+
+    await processor.handle({ data: payload, id: 'job-child' } as any);
+
+    expect(storage.objectExists).toHaveBeenCalledWith(
+      `splits/parent-1/part-1-${rawChecksum}.pdf`,
+      'documents',
+    );
+    expect(storage.uploadObject).not.toHaveBeenCalledWith(
+      expect.stringContaining('originals/'),
+      expect.any(Buffer),
+      expect.anything(),
+      expect.anything(),
+    );
+    expect(storage.uploadObject).toHaveBeenCalledWith(
+      `canonical/${rawChecksum}.pdfa`,
+      canonicalBuffer,
+      expect.objectContaining({ 'checksum-sha256': canonicalChecksum }),
+      'documents',
+    );
+    expect(prisma.document.update).toHaveBeenCalledWith({
+      where: { id: payload.documentId },
+      data: expect.objectContaining({
+        originalUri: splitUri,
+        canonicalUri: `s3://documents/canonical/${rawChecksum}.pdfa`,
+      }),
+    });
+  });
 });
 

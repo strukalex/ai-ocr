@@ -1,3 +1,5 @@
+# SETUP
+
 pnpm nx serve api
 pnpm nx serve ingestion-worker
 docker compose -f ops/compose.dev.yml up -d postgres redis minio keycloak minio-init
@@ -10,8 +12,11 @@ pnpm prisma db push
 
 npx prisma studio
 
+# RESET
+reset:env
 
-==
+
+# Phase 2 tryouts
 
 API=http://localhost:3000/api
 REQUIRE_TLS=false

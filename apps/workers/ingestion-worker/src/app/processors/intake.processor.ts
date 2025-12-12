@@ -62,16 +62,18 @@ export class IntakeProcessor {
     }
 
     const bucket = this.storage.getDefaultBucket();
-    const originalKey = `originals/${payload.checksum}`;
-    const canonicalKey = `canonical/${payload.checksum}.pdfa`;
-    const originalUri = document.originalUri ?? `s3://${bucket}/${originalKey}`;
-    const canonicalUri = `s3://${bucket}/${canonicalKey}`;
+    const parsedOriginal = this.parseDefaultBucketS3Uri(document.originalUri ?? payload.originalUri);
     const allowChecksumMismatch = process.env['ALLOW_CHECKSUM_MISMATCH'] === 'true';
 
     // Resolve and validate the original content before persisting.
     const originalBuffer = await this.loadOriginalBuffer(payload, traceId);
     const detectedOriginalChecksum = this.computeSha256(originalBuffer);
     const checksumToPersist = payload.checksum || detectedOriginalChecksum;
+    const originalKey = parsedOriginal?.key ?? `originals/${checksumToPersist}`;
+    const canonicalKey = `canonical/${checksumToPersist}.pdfa`;
+    const storedOriginalUri = parsedOriginal?.uri ?? `s3://${bucket}/${originalKey}`;
+    const originalUri = document.originalUri ?? storedOriginalUri;
+    const canonicalUri = `s3://${bucket}/${canonicalKey}`;
 
     if (!originalBuffer || originalBuffer.length === 0) {
       await this.prisma.document.update({
@@ -262,7 +264,7 @@ export class IntakeProcessor {
       metadata: {
         checksum: payload.checksum,
         originalUri: payload.originalUri,
-        storedOriginalUri: originalUri,
+        storedOriginalUri: storedOriginalUri,
         canonicalUri,
         canonicalChecksum,
         idempotencyKey: payload.idempotencyKey,
@@ -280,7 +282,7 @@ export class IntakeProcessor {
       checksum: payload.checksum,
       sourceChannel: payload.sourceChannel,
       idempotencyKey: payload.idempotencyKey,
-      storedOriginalUri: originalUri,
+      storedOriginalUri: storedOriginalUri,
       canonicalUri,
     });
 
@@ -362,6 +364,24 @@ export class IntakeProcessor {
       originalUri: uri,
     });
     return Buffer.alloc(0);
+  }
+
+  private parseDefaultBucketS3Uri(uri?: string): { key: string; uri: string } | null {
+    if (!uri || !uri.startsWith('s3://')) {
+      return null;
+    }
+
+    try {
+      const parsed = new URL(uri);
+      const bucket = parsed.hostname;
+      if (bucket !== this.storage.getDefaultBucket()) {
+        return null;
+      }
+      const key = decodeURIComponent(parsed.pathname.replace(/^\/+/, ''));
+      return { key, uri: `s3://${bucket}/${key}` };
+    } catch {
+      return null;
+    }
   }
 
   private computeSha256(buffer: Buffer): string {
